@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface Task {
   id: string;
@@ -12,19 +12,30 @@ interface Task {
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [input, setInput] = useState('');
+  const [debugMsg, setDebugMsg] = useState('');
+  const isLoaded = useRef(false);
 
-  // Load
+  // Load - only once
   useEffect(() => {
     const data = localStorage.getItem('openclaw-tasks');
+    console.log('Loading from localStorage:', data);
     if (data) {
       try {
-        setTasks(JSON.parse(data));
-      } catch {}
+        const parsed = JSON.parse(data);
+        setTasks(parsed);
+        setDebugMsg(`Loaded ${parsed.length} tasks`);
+      } catch (e) {
+        console.error('Parse error:', e);
+        setDebugMsg('Parse error');
+      }
     }
+    isLoaded.current = true;
   }, []);
 
-  // Save
+  // Save - only after initial load
   useEffect(() => {
+    if (!isLoaded.current) return; // Don't save on initial mount
+    console.log('Saving tasks:', tasks);
     localStorage.setItem('openclaw-tasks', JSON.stringify(tasks));
   }, [tasks]);
 
@@ -38,8 +49,14 @@ export default function Home() {
 
   // Add task
   const addTask = () => {
+    console.log('addTask called, input:', input);
+    setDebugMsg('Button clicked!');
+
     const text = input.trim();
-    if (!text) return;
+    if (!text) {
+      setDebugMsg('Empty input, skipping');
+      return;
+    }
 
     const task: Task = {
       id: Date.now().toString(),
@@ -48,7 +65,9 @@ export default function Home() {
       status: 'todo'
     };
 
-    setTasks([task, ...tasks]);
+    console.log('Creating task:', task);
+    setDebugMsg(`Adding: ${text}`);
+    setTasks(prev => [task, ...prev]);
     setInput('');
   };
 
@@ -105,7 +124,11 @@ export default function Home() {
               }}
             />
             <button
-              onClick={addTask}
+              type="button"
+              onClick={() => {
+                console.log('Button onClick fired');
+                addTask();
+              }}
               style={{
                 padding: '12px 20px',
                 background: '#DA7756',
@@ -122,6 +145,10 @@ export default function Home() {
           </div>
           <div style={{ fontSize: 12, color: '#9B9B9B', marginTop: 8 }}>
             「緊急」「急」→ 高優先，「有空」「不急」→ 低優先
+          </div>
+          {/* Debug info */}
+          <div style={{ fontSize: 11, color: '#DA7756', marginTop: 8, padding: 8, background: '#FFF5F0', borderRadius: 4 }}>
+            Debug: {debugMsg || 'Ready'} | Tasks: {tasks.length} | Input: "{input}"
           </div>
         </div>
 
