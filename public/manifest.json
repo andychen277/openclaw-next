@@ -4,8 +4,8 @@
   "description": "AI-Powered Task Management Dashboard",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0a0a",
-  "theme_color": "#0a0a0a",
+  "background_color": "#FAF9F7",
+  "theme_color": "#DA7756",
   "orientation": "portrait",
   "icons": [
     {

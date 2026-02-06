@@ -1,7 +1,6 @@
 @import "tailwindcss";
 
 :root {
-  /* OpenClaw Color Palette - Warm & Clean */
   --primary: #DA7756;
   --primary-hover: #C66A4A;
   --secondary: #C9A88F;
@@ -17,16 +16,17 @@
   --text: #2D2D2D;
   --muted: #6B6B6B;
   --light: #9B9B9B;
+}
 
-  /* Priority Colors */
-  --priority-high: #C75D5D;
-  --priority-medium: #D4A84B;
-  --priority-low: #5D8C61;
-
-  /* Status Colors */
-  --status-todo: #5B8BD4;
-  --status-progress: #D4A84B;
-  --status-done: #5D8C61;
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #1A1915;
+    --surface: #2D2A26;
+    --border: #3D3A36;
+    --text: #F5F4F2;
+    --muted: #A0A0A0;
+    --light: #707070;
+  }
 }
 
 @theme inline {
@@ -53,18 +53,6 @@
   --radius-lg: 16px;
 }
 
-/* Dark mode */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #1A1915;
-    --surface: #2D2A26;
-    --border: #3D3A36;
-    --text: #F5F4F2;
-    --muted: #A0A0A0;
-    --light: #707070;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--text);
@@ -73,45 +61,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Buttons */
-.btn-primary {
-  background: var(--primary);
-  color: white;
-  border-radius: var(--radius-md);
-  padding: 12px 24px;
-  font-weight: 500;
-  transition: all 0.2s;
-  border: none;
-  cursor: pointer;
-}
-
-.btn-primary:hover {
-  background: var(--primary-hover);
-}
-
-.btn-primary:disabled {
-  background: var(--border);
-  color: var(--light);
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background: transparent;
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 12px 24px;
-  font-weight: 500;
-  transition: all 0.2s;
-  cursor: pointer;
-}
-
-.btn-secondary:hover {
-  border-color: var(--primary);
-  color: var(--primary);
-}
-
-/* Card */
+/* Reusable component classes */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -120,7 +70,6 @@ body {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-/* Input */
 .input {
   background: var(--background);
   border: 1px solid var(--border);
@@ -128,7 +77,7 @@ body {
   padding: 12px 16px;
   font-size: 15px;
   width: 100%;
-  transition: all 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
   color: var(--text);
 }
 
@@ -142,60 +91,60 @@ body {
   color: var(--light);
 }
 
-/* Task Card Status Borders */
-.task-card {
-  transition: all 0.2s;
+.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
-.task-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
-.task-card.status-todo {
-  border-left: 4px solid var(--status-todo);
-}
-
-.task-card.status-in_progress {
-  border-left: 4px solid var(--status-progress);
-}
-
-.task-card.status-done {
-  border-left: 4px solid var(--status-done);
-}
-
-/* Priority Badges */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
+.btn-primary {
+  background: var(--primary);
+  color: white;
+  border-radius: var(--radius-md);
+  padding: 12px 24px;
   font-weight: 500;
+  transition: background 0.2s;
+  border: none;
+  cursor: pointer;
 }
 
-.badge-high {
-  background: rgba(199, 93, 93, 0.1);
-  color: var(--priority-high);
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover);
 }
 
-.badge-medium {
-  background: rgba(212, 168, 75, 0.1);
-  color: var(--priority-medium);
+.btn-primary:disabled {
+  background: var(--border);
+  color: var(--light);
+  cursor: not-allowed;
 }
 
-.badge-low {
-  background: rgba(93, 140, 97, 0.1);
-  color: var(--priority-low);
+.btn-secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 24px;
+  font-weight: 500;
+  transition: border-color 0.2s, color 0.2s;
+  cursor: pointer;
 }
 
-/* Selection */
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Selection & scrollbar */
 ::selection {
   background: rgba(218, 119, 86, 0.2);
 }
 
-/* Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -204,7 +153,7 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
