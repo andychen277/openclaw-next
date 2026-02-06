@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { Task } from '@/lib/types';
 import { detectPriority, getPriorityLabel, getStatusLabel } from '@/lib/priority';
 
@@ -10,35 +10,39 @@ export default function Dashboard() {
   const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
   const [isLoaded, setIsLoaded] = useState(false);
 
+  // Load tasks
   useEffect(() => {
-    const saved = localStorage.getItem('openclaw-tasks');
-    if (saved) {
-      try {
+    try {
+      const saved = localStorage.getItem('openclaw-tasks');
+      if (saved) {
         const parsed = JSON.parse(saved);
         setTasks(parsed.map((t: Task) => ({
           ...t,
           createdAt: new Date(t.createdAt),
           updatedAt: new Date(t.updatedAt)
         })));
-      } catch (e) {
-        console.error('Failed to parse tasks:', e);
       }
+    } catch (e) {
+      console.error('Load error:', e);
     }
     setIsLoaded(true);
   }, []);
 
+  // Save tasks
   useEffect(() => {
     if (isLoaded) {
       localStorage.setItem('openclaw-tasks', JSON.stringify(tasks));
     }
   }, [tasks, isLoaded]);
 
-  const handleAddTask = () => {
+  // Add task - using form submit
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
     const text = inputText.trim();
     if (!text) return;
 
     const newTask: Task = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       content: text,
       priority: detectPriority(text),
       status: 'todo',
@@ -46,219 +50,121 @@ export default function Dashboard() {
       updatedAt: new Date()
     };
 
-    setTasks(prev => [newTask, ...prev]);
+    setTasks([newTask, ...tasks]);
     setInputText('');
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleAddTask();
-    }
   };
 
   const cycleStatus = (id: string) => {
     setTasks(tasks.map(t => {
       if (t.id !== id) return t;
-      const statusOrder: Task['status'][] = ['todo', 'in_progress', 'done'];
-      const currentIndex = statusOrder.indexOf(t.status);
-      const nextStatus = statusOrder[(currentIndex + 1) % 3];
-      return { ...t, status: nextStatus, updatedAt: new Date() };
+      const order: Task['status'][] = ['todo', 'in_progress', 'done'];
+      const idx = order.indexOf(t.status);
+      return { ...t, status: order[(idx + 1) % 3], updatedAt: new Date() };
     }));
   };
 
   const handleDelete = (id: string) => {
     setTasks(tasks.filter(t => t.id !== id));
-    setSelectedTasks(prev => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
+    selectedTasks.delete(id);
+    setSelectedTasks(new Set(selectedTasks));
   };
 
-  const toggleSelection = (id: string) => {
-    setSelectedTasks(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+  const toggleSelect = (id: string) => {
+    const next = new Set(selectedTasks);
+    next.has(id) ? next.delete(id) : next.add(id);
+    setSelectedTasks(next);
   };
-
-  const clearSelection = () => setSelectedTasks(new Set());
 
   const handleMerge = () => {
     const items = tasks.filter(t => selectedTasks.has(t.id));
-    const content = items.map(t => `• ${t.content}`).join('\n');
-    navigator.clipboard?.writeText(content);
+    const text = items.map(t => `• ${t.content}`).join('\n');
+    navigator.clipboard?.writeText(text);
     alert(`已複製 ${items.length} 項任務`);
   };
 
   const handlePublish = (platform: string) => {
     const items = tasks.filter(t => selectedTasks.has(t.id));
-    const content = items.map(t => t.content).join('\n\n');
-    const names: Record<string, string> = { instagram: 'Instagram', threads: 'Threads', x: 'X' };
-    alert(`發布到 ${names[platform]}:\n\n${content}`);
+    const text = items.map(t => t.content).join('\n\n');
+    alert(`發布到 ${platform}:\n\n${text}`);
   };
 
   const todoTasks = tasks.filter(t => t.status === 'todo');
-  const inProgressTasks = tasks.filter(t => t.status === 'in_progress');
+  const progressTasks = tasks.filter(t => t.status === 'in_progress');
   const doneTasks = tasks.filter(t => t.status === 'done');
-
-  const TaskItem = ({ task }: { task: Task }) => (
-    <div className={`card task-card status-${task.status} mb-3`}>
-      <div className="flex items-start gap-3">
-        {task.status === 'done' && (
-          <input
-            type="checkbox"
-            checked={selectedTasks.has(task.id)}
-            onChange={() => toggleSelection(task.id)}
-            className="mt-1 w-4 h-4 accent-primary rounded"
-          />
-        )}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-2">
-            <span className={`badge badge-${task.priority}`}>
-              {getPriorityLabel(task.priority)}
-            </span>
-            <span className="text-light text-xs">
-              {getStatusLabel(task.status)}
-            </span>
-          </div>
-          <p className={`text-text leading-relaxed ${task.status === 'done' ? 'line-through text-muted' : ''}`}>
-            {task.content}
-          </p>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => cycleStatus(task.id)}
-            className="text-muted hover:text-primary text-sm px-3 py-1.5 rounded-lg hover:bg-background transition-colors"
-          >
-            切換
-          </button>
-          <button
-            onClick={() => handleDelete(task.id)}
-            className="text-muted hover:text-danger text-sm px-3 py-1.5 rounded-lg hover:bg-background transition-colors"
-          >
-            刪除
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  const TaskSection = ({ title, tasks, dotColor }: { title: string; tasks: Task[]; dotColor: string }) => {
-    if (tasks.length === 0) return null;
-    return (
-      <div className="mb-8">
-        <div className="flex items-center gap-2 mb-4">
-          <div className={`w-2.5 h-2.5 rounded-full ${dotColor}`} />
-          <h2 className="text-muted font-medium">{title}</h2>
-          <span className="text-light text-sm">({tasks.length})</span>
-        </div>
-        {tasks.map(task => <TaskItem key={task.id} task={task} />)}
-      </div>
-    );
-  };
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>
       {/* Header */}
-      <header className="border-b" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-        <div className="max-w-3xl mx-auto px-6 py-5">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl">🦞</span>
-            <div>
-              <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>OpenClaw</h1>
-              <p className="text-sm" style={{ color: 'var(--muted)' }}>AI 任務管理</p>
-            </div>
+      <header style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
+          <span className="text-2xl">🦞</span>
+          <div>
+            <h1 className="text-lg font-semibold" style={{ color: 'var(--text)' }}>OpenClaw</h1>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>AI 任務管理</p>
           </div>
         </div>
       </header>
 
-      {/* Main */}
-      <main className="max-w-3xl mx-auto px-6 py-8">
-        {/* Input Section */}
-        <div className="card mb-10">
-          <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--muted)' }}>新增任務</h3>
-          <div className="flex gap-3">
+      <main className="max-w-2xl mx-auto px-4 py-6">
+        {/* Input Form */}
+        <form onSubmit={handleSubmit} className="card mb-8">
+          <label className="block text-sm font-medium mb-2" style={{ color: 'var(--muted)' }}>
+            新增任務
+          </label>
+          <div className="flex gap-2">
             <input
               type="text"
               value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="輸入任務內容，按 Enter 送出..."
+              onChange={e => setInputText(e.target.value)}
+              placeholder="輸入任務..."
               className="input flex-1"
+              autoComplete="off"
             />
-            <button
-              onClick={handleAddTask}
-              disabled={!inputText.trim()}
-              className="btn-primary whitespace-nowrap"
-            >
+            <button type="submit" className="btn-primary">
               送出
             </button>
           </div>
-          <p className="text-xs mt-3" style={{ color: 'var(--light)' }}>
-            AI 自動判斷優先級：「緊急」「急」「馬上」→ 高優先，「有空」「之後」「不急」→ 低優先
+          <p className="text-xs mt-2" style={{ color: 'var(--light)' }}>
+            輸入「緊急」「急」→ 高優先，「有空」「不急」→ 低優先
           </p>
-        </div>
+        </form>
 
-        {/* Tasks */}
+        {/* Task List */}
         {tasks.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="text-5xl mb-4">📋</div>
-            <p className="text-lg" style={{ color: 'var(--muted)' }}>還沒有任務</p>
-            <p className="text-sm mt-1" style={{ color: 'var(--light)' }}>在上方輸入框新增你的第一個任務</p>
+          <div className="text-center py-12">
+            <div className="text-4xl mb-3">📋</div>
+            <p style={{ color: 'var(--muted)' }}>還沒有任務</p>
           </div>
         ) : (
           <>
-            <TaskSection title="待辦" tasks={todoTasks} dotColor="bg-[#5B8BD4]" />
-            <TaskSection title="進行中" tasks={inProgressTasks} dotColor="bg-[#D4A84B]" />
-            <TaskSection title="已完成" tasks={doneTasks} dotColor="bg-[#5D8C61]" />
+            <TaskSection title="待辦" tasks={todoTasks} color="#5B8BD4" onCycle={cycleStatus} onDelete={handleDelete} onSelect={toggleSelect} selected={selectedTasks} />
+            <TaskSection title="進行中" tasks={progressTasks} color="#D4A84B" onCycle={cycleStatus} onDelete={handleDelete} onSelect={toggleSelect} selected={selectedTasks} />
+            <TaskSection title="已完成" tasks={doneTasks} color="#5D8C61" onCycle={cycleStatus} onDelete={handleDelete} onSelect={toggleSelect} selected={selectedTasks} />
           </>
         )}
       </main>
 
       {/* Action Bar */}
       {selectedTasks.size > 0 && (
-        <div
-          className="fixed bottom-0 left-0 right-0 border-t p-4"
-          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
-        >
-          <div className="max-w-3xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-4">
+        <div className="fixed bottom-0 left-0 right-0 p-4" style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)' }}>
+          <div className="max-w-2xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
               <span style={{ color: 'var(--text)' }}>
-                已選取 <strong style={{ color: 'var(--primary)' }}>{selectedTasks.size}</strong> 項
+                已選 <b style={{ color: 'var(--primary)' }}>{selectedTasks.size}</b> 項
               </span>
-              <button
-                onClick={clearSelection}
-                className="text-sm hover:underline"
-                style={{ color: 'var(--muted)' }}
-              >
-                取消選取
+              <button onClick={() => setSelectedTasks(new Set())} className="text-sm" style={{ color: 'var(--muted)' }}>
+                取消
               </button>
             </div>
-            <div className="flex items-center gap-2">
-              <button onClick={handleMerge} className="btn-secondary text-sm py-2 px-4">
-                複製
-              </button>
+            <div className="flex gap-2">
+              <button onClick={handleMerge} className="btn-secondary text-sm py-2 px-3">複製</button>
               <div className="relative group">
-                <button className="btn-primary text-sm py-2 px-4">
-                  發布
-                </button>
+                <button className="btn-primary text-sm py-2 px-3">發布</button>
                 <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block">
-                  <div className="card p-2 min-w-[140px] shadow-lg">
-                    {[
-                      { key: 'instagram', label: '📷 Instagram' },
-                      { key: 'threads', label: '🧵 Threads' },
-                      { key: 'x', label: '𝕏 X' },
-                    ].map(p => (
-                      <button
-                        key={p.key}
-                        onClick={() => handlePublish(p.key)}
-                        className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-background transition-colors"
-                        style={{ color: 'var(--text)' }}
-                      >
-                        {p.label}
+                  <div className="card p-1 shadow-lg min-w-[120px]">
+                    {['Instagram', 'Threads', 'X'].map(p => (
+                      <button key={p} onClick={() => handlePublish(p)} className="w-full text-left px-3 py-2 text-sm rounded hover:bg-background" style={{ color: 'var(--text)' }}>
+                        {p}
                       </button>
                     ))}
                   </div>
@@ -268,6 +174,68 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Task Section Component
+function TaskSection({ title, tasks, color, onCycle, onDelete, onSelect, selected }: {
+  title: string;
+  tasks: Task[];
+  color: string;
+  onCycle: (id: string) => void;
+  onDelete: (id: string) => void;
+  onSelect: (id: string) => void;
+  selected: Set<string>;
+}) {
+  if (tasks.length === 0) return null;
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+        <span className="text-sm font-medium" style={{ color: 'var(--muted)' }}>{title}</span>
+        <span className="text-xs" style={{ color: 'var(--light)' }}>({tasks.length})</span>
+      </div>
+      {tasks.map(task => (
+        <div
+          key={task.id}
+          className="card mb-2"
+          style={{ borderLeft: `4px solid ${color}` }}
+        >
+          <div className="flex items-start gap-3">
+            {task.status === 'done' && (
+              <input
+                type="checkbox"
+                checked={selected.has(task.id)}
+                onChange={() => onSelect(task.id)}
+                className="mt-1"
+              />
+            )}
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`badge badge-${task.priority}`}>
+                  {getPriorityLabel(task.priority)}
+                </span>
+                <span className="text-xs" style={{ color: 'var(--light)' }}>
+                  {getStatusLabel(task.status)}
+                </span>
+              </div>
+              <p style={{ color: task.status === 'done' ? 'var(--muted)' : 'var(--text)', textDecoration: task.status === 'done' ? 'line-through' : 'none' }}>
+                {task.content}
+              </p>
+            </div>
+            <div className="flex gap-1">
+              <button onClick={() => onCycle(task.id)} className="text-sm px-2 py-1 rounded" style={{ color: 'var(--muted)' }}>
+                切換
+              </button>
+              <button onClick={() => onDelete(task.id)} className="text-sm px-2 py-1 rounded" style={{ color: 'var(--danger)' }}>
+                刪除
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
