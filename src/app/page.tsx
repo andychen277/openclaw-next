@@ -1,81 +1,54 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Task } from '@/lib/types';
-import { detectPriority } from '@/lib/priority';
-import TaskCard from '@/components/TaskCard';
-import ActionBar from '@/components/ActionBar';
+import { detectPriority, getPriorityLabel, getStatusLabel } from '@/lib/priority';
 
 export default function Dashboard() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [inputText, setInputText] = useState('');
   const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
-  const [isListening, setIsListening] = useState(false);
-  const [voiceAvailable, setVoiceAvailable] = useState(false);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   // Load tasks from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('openclaw-tasks');
     if (saved) {
-      const parsed = JSON.parse(saved);
-      setTasks(parsed.map((t: Task) => ({
-        ...t,
-        createdAt: new Date(t.createdAt),
-        updatedAt: new Date(t.updatedAt)
-      })));
+      try {
+        const parsed = JSON.parse(saved);
+        setTasks(parsed.map((t: Task) => ({
+          ...t,
+          createdAt: new Date(t.createdAt),
+          updatedAt: new Date(t.updatedAt)
+        })));
+      } catch (e) {
+        console.error('Failed to parse tasks:', e);
+      }
     }
+    setIsLoaded(true);
   }, []);
 
   // Save tasks to localStorage
   useEffect(() => {
-    if (tasks.length > 0) {
+    if (isLoaded) {
       localStorage.setItem('openclaw-tasks', JSON.stringify(tasks));
     }
-  }, [tasks]);
-
-  // Initialize speech recognition
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost';
-      const hasAPI = 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window;
-
-      if (isSecure && hasAPI) {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        recognitionRef.current = new SpeechRecognition();
-        recognitionRef.current.continuous = false;
-        recognitionRef.current.interimResults = true;
-        recognitionRef.current.lang = 'zh-TW';
-
-        recognitionRef.current.onresult = (event) => {
-          const transcript = Array.from(event.results)
-            .map((result) => result[0].transcript)
-            .join('');
-          setInputText(transcript);
-        };
-
-        recognitionRef.current.onend = () => {
-          setIsListening(false);
-        };
-
-        setVoiceAvailable(true);
-      }
-    }
-  }, []);
+  }, [tasks, isLoaded]);
 
   const handleAddTask = () => {
-    if (!inputText.trim()) return;
+    const text = inputText.trim();
+    if (!text) return;
 
     const newTask: Task = {
       id: Date.now().toString(),
-      content: inputText.trim(),
-      priority: detectPriority(inputText),
+      content: text,
+      priority: detectPriority(text),
       status: 'todo',
       createdAt: new Date(),
       updatedAt: new Date()
     };
 
-    setTasks([newTask, ...tasks]);
+    setTasks(prev => [newTask, ...prev]);
     setInputText('');
   };
 
@@ -86,10 +59,14 @@ export default function Dashboard() {
     }
   };
 
-  const handleStatusChange = (id: string, status: Task['status']) => {
-    setTasks(tasks.map(t =>
-      t.id === id ? { ...t, status, updatedAt: new Date() } : t
-    ));
+  const cycleStatus = (id: string) => {
+    setTasks(tasks.map(t => {
+      if (t.id !== id) return t;
+      const statusOrder: Task['status'][] = ['todo', 'in_progress', 'done'];
+      const currentIndex = statusOrder.indexOf(t.status);
+      const nextStatus = statusOrder[(currentIndex + 1) % 3];
+      return { ...t, status: nextStatus, updatedAt: new Date() };
+    }));
   };
 
   const handleDelete = (id: string) => {
@@ -113,150 +90,197 @@ export default function Dashboard() {
     });
   };
 
-  const clearSelection = () => {
-    setSelectedTasks(new Set());
-  };
+  const clearSelection = () => setSelectedTasks(new Set());
 
   const handleMerge = () => {
-    const selectedItems = tasks.filter(t => selectedTasks.has(t.id));
-    const mergedContent = selectedItems.map(t => `• ${t.content}`).join('\n');
-    alert(`合併內容:\n\n${mergedContent}`);
+    const items = tasks.filter(t => selectedTasks.has(t.id));
+    const content = items.map(t => `• ${t.content}`).join('\n');
+    navigator.clipboard?.writeText(content);
+    alert(`已複製 ${items.length} 項任務到剪貼簿`);
   };
 
   const handlePublish = (platform: string) => {
-    const selectedItems = tasks.filter(t => selectedTasks.has(t.id));
-    const content = selectedItems.map(t => t.content).join('\n\n');
-
-    const platformNames: Record<string, string> = {
-      instagram: 'Instagram',
-      threads: 'Threads',
-      x: 'X (Twitter)'
-    };
-
-    alert(`即將發布到 ${platformNames[platform]}:\n\n${content}`);
+    const items = tasks.filter(t => selectedTasks.has(t.id));
+    const content = items.map(t => t.content).join('\n\n');
+    const names: Record<string, string> = { instagram: 'Instagram', threads: 'Threads', x: 'X' };
+    alert(`發布到 ${names[platform]}:\n\n${content}`);
   };
 
-  const toggleVoice = () => {
-    // Check if not on localhost/HTTPS
-    const isSecure = typeof window !== 'undefined' &&
-      (window.location.protocol === 'https:' || window.location.hostname === 'localhost');
+  // Group tasks by status
+  const todoTasks = tasks.filter(t => t.status === 'todo');
+  const inProgressTasks = tasks.filter(t => t.status === 'in_progress');
+  const doneTasks = tasks.filter(t => t.status === 'done');
 
-    if (!isSecure) {
-      alert('語音輸入需要 HTTPS 或 localhost 環境\n\n請使用 localhost:4000 訪問，或部署到 HTTPS 環境');
-      return;
-    }
-
-    if (!recognitionRef.current) {
-      alert('您的瀏覽器不支援語音輸入');
-      return;
-    }
-
-    if (isListening) {
-      recognitionRef.current.stop();
-    } else {
-      setIsListening(true);
-      try {
-        recognitionRef.current.start();
-      } catch (err) {
-        setIsListening(false);
-        alert('無法啟動語音輸入，請確認已授權麥克風權限');
-      }
-    }
+  const priorityColors = {
+    high: 'bg-red-500',
+    medium: 'bg-amber-500',
+    low: 'bg-emerald-500'
   };
 
-  // Sort tasks: todo first, then in_progress, then done
-  const sortedTasks = [...tasks].sort((a, b) => {
-    const order = { todo: 0, in_progress: 1, done: 2 };
-    return order[a.status] - order[b.status];
-  });
+  const statusColors = {
+    todo: 'border-l-blue-500',
+    in_progress: 'border-l-amber-500',
+    done: 'border-l-emerald-500'
+  };
+
+  const TaskItem = ({ task }: { task: Task }) => (
+    <div
+      className={`group bg-zinc-900 border border-zinc-800 ${statusColors[task.status]} border-l-4 rounded-lg p-4 hover:bg-zinc-800/50 transition-all`}
+    >
+      <div className="flex items-start gap-3">
+        {task.status === 'done' && (
+          <input
+            type="checkbox"
+            checked={selectedTasks.has(task.id)}
+            onChange={() => toggleSelection(task.id)}
+            className="mt-1 w-4 h-4 rounded accent-purple-500"
+          />
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className={`${priorityColors[task.priority]} text-white text-xs px-2 py-0.5 rounded font-medium`}>
+              {getPriorityLabel(task.priority)}
+            </span>
+            <span className="text-zinc-500 text-xs">
+              {getStatusLabel(task.status)}
+            </span>
+          </div>
+          <p className={`text-zinc-100 text-sm leading-relaxed ${task.status === 'done' ? 'line-through text-zinc-500' : ''}`}>
+            {task.content}
+          </p>
+        </div>
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={() => cycleStatus(task.id)}
+            className="text-zinc-400 hover:text-white text-xs px-2 py-1 rounded hover:bg-zinc-700"
+          >
+            切換
+          </button>
+          <button
+            onClick={() => handleDelete(task.id)}
+            className="text-zinc-400 hover:text-red-400 text-xs px-2 py-1 rounded hover:bg-zinc-700"
+          >
+            刪除
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const TaskSection = ({ title, tasks, color }: { title: string; tasks: Task[]; color: string }) => {
+    if (tasks.length === 0) return null;
+    return (
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <div className={`w-2 h-2 rounded-full ${color}`} />
+          <h2 className="text-zinc-400 text-sm font-medium">{title}</h2>
+          <span className="text-zinc-600 text-xs">({tasks.length})</span>
+        </div>
+        <div className="space-y-2">
+          {tasks.map(task => <TaskItem key={task.id} task={task} />)}
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <div className="relative min-h-screen pb-32" style={{ zIndex: 1 }}>
+    <div className="min-h-screen bg-zinc-950 text-white">
       {/* Header */}
-      <header className="header-glass fixed top-0 left-0 right-0 z-50 px-4 py-4" style={{ paddingTop: 'calc(1rem + env(safe-area-inset-top))' }}>
-        <div className="max-w-2xl mx-auto flex items-center justify-center gap-3">
-          <span className="text-3xl">🦞</span>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
-            OpenClaw
-          </h1>
+      <header className="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-800">
+        <div className="max-w-2xl mx-auto px-4 py-4">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">🦞</span>
+            <h1 className="text-lg font-semibold text-white">OpenClaw</h1>
+          </div>
         </div>
       </header>
 
-      {/* Input Bar */}
-      <div className="fixed left-0 right-0 z-40 px-4" style={{ top: 'calc(72px + env(safe-area-inset-top))' }}>
-        <div className="glass-card-strong p-5 max-w-2xl mx-auto">
-          <div className="flex gap-4">
-            <textarea
+      {/* Main Content */}
+      <main className="max-w-2xl mx-auto px-4 py-6">
+        {/* Input */}
+        <div className="mb-8">
+          <div className="flex gap-2">
+            <input
+              type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="✨ 輸入任務，AI 自動判斷優先級..."
-              className="input-glow flex-1 bg-white/5 text-white placeholder-gray-500 px-5 py-4 rounded-2xl border border-white/10 outline-none resize-none text-base"
-              style={{ minHeight: '80px' }}
-              rows={2}
+              placeholder="輸入任務，按 Enter 送出..."
+              className="flex-1 bg-zinc-900 text-white placeholder-zinc-500 px-4 py-3 rounded-lg border border-zinc-800 focus:border-zinc-600 focus:outline-none text-sm"
             />
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={toggleVoice}
-                className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl transition-all border relative ${
-                  isListening
-                    ? 'bg-red-500/80 border-red-400 mic-listening'
-                    : voiceAvailable
-                      ? 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20'
-                      : 'bg-white/5 border-white/10 opacity-40 cursor-not-allowed'
-                }`}
-                title={voiceAvailable ? '語音輸入' : '語音需要 localhost 或 HTTPS'}
-              >
-                🎤
-                {!voiceAvailable && (
-                  <span className="absolute -top-1 -right-1 text-xs">🔒</span>
-                )}
-              </button>
-              <button
-                onClick={handleAddTask}
-                className="btn-gradient w-14 h-14 rounded-2xl flex items-center justify-center text-xl border-0"
-              >
-                <span className="text-white font-bold text-2xl">+</span>
-              </button>
-            </div>
+            <button
+              onClick={handleAddTask}
+              disabled={!inputText.trim()}
+              className="px-5 py-3 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              送出
+            </button>
           </div>
+          <p className="text-zinc-600 text-xs mt-2">
+            AI 會自動判斷優先級：緊急/急/馬上 → 高優先，有空/之後/不急 → 低優先
+          </p>
         </div>
-      </div>
 
-      {/* Task List */}
-      <main className="px-4 max-w-2xl mx-auto" style={{ paddingTop: 'calc(220px + env(safe-area-inset-top))' }}>
-        {sortedTasks.length === 0 ? (
-          <div className="empty-state text-center mt-16 px-4">
-            <div className="glass-card p-10 inline-block">
-              <p className="text-6xl mb-6">📋</p>
-              <p className="text-xl text-gray-300 font-medium mb-2">還沒有任務</p>
-              <p className="text-gray-500">在上方輸入框新增第一個任務吧！</p>
-            </div>
+        {/* Tasks */}
+        {tasks.length === 0 ? (
+          <div className="text-center py-20">
+            <div className="text-4xl mb-4">📋</div>
+            <p className="text-zinc-400">還沒有任務</p>
+            <p className="text-zinc-600 text-sm mt-1">在上方輸入任務開始吧</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {sortedTasks.map((task, index) => (
-              <div key={task.id} className="task-enter" style={{ animationDelay: `${index * 50}ms` }}>
-                <TaskCard
-                  task={task}
-                  isSelected={selectedTasks.has(task.id)}
-                  onToggleSelect={toggleSelection}
-                  onStatusChange={handleStatusChange}
-                  onDelete={handleDelete}
-                />
-              </div>
-            ))}
-          </div>
+          <>
+            <TaskSection title="待辦" tasks={todoTasks} color="bg-blue-500" />
+            <TaskSection title="進行中" tasks={inProgressTasks} color="bg-amber-500" />
+            <TaskSection title="已完成" tasks={doneTasks} color="bg-emerald-500" />
+          </>
         )}
       </main>
 
       {/* Action Bar */}
-      <ActionBar
-        selectedCount={selectedTasks.size}
-        onClearSelection={clearSelection}
-        onMerge={handleMerge}
-        onPublish={handlePublish}
-      />
+      {selectedTasks.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-zinc-900/95 backdrop-blur border-t border-zinc-800 p-4">
+          <div className="max-w-2xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-zinc-300">
+                已選取 <span className="text-purple-400 font-medium">{selectedTasks.size}</span> 項
+              </span>
+              <button
+                onClick={clearSelection}
+                className="text-zinc-500 hover:text-white text-sm"
+              >
+                取消
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleMerge}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-sm"
+              >
+                複製
+              </button>
+              <div className="relative group">
+                <button className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm">
+                  發布
+                </button>
+                <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block">
+                  <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-1 min-w-[120px]">
+                    {['instagram', 'threads', 'x'].map(p => (
+                      <button
+                        key={p}
+                        onClick={() => handlePublish(p)}
+                        className="w-full text-left px-3 py-2 text-sm text-white hover:bg-zinc-700 rounded"
+                      >
+                        {p === 'instagram' ? '📷 Instagram' : p === 'threads' ? '🧵 Threads' : '𝕏 X'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
