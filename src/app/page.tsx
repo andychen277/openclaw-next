@@ -10,7 +10,6 @@ export default function Dashboard() {
   const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load tasks from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('openclaw-tasks');
     if (saved) {
@@ -28,7 +27,6 @@ export default function Dashboard() {
     setIsLoaded(true);
   }, []);
 
-  // Save tasks to localStorage
   useEffect(() => {
     if (isLoaded) {
       localStorage.setItem('openclaw-tasks', JSON.stringify(tasks));
@@ -81,11 +79,7 @@ export default function Dashboard() {
   const toggleSelection = (id: string) => {
     setSelectedTasks(prev => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
   };
@@ -96,7 +90,7 @@ export default function Dashboard() {
     const items = tasks.filter(t => selectedTasks.has(t.id));
     const content = items.map(t => `• ${t.content}`).join('\n');
     navigator.clipboard?.writeText(content);
-    alert(`已複製 ${items.length} 項任務到剪貼簿`);
+    alert(`已複製 ${items.length} 項任務`);
   };
 
   const handlePublish = (platform: string) => {
@@ -106,59 +100,44 @@ export default function Dashboard() {
     alert(`發布到 ${names[platform]}:\n\n${content}`);
   };
 
-  // Group tasks by status
   const todoTasks = tasks.filter(t => t.status === 'todo');
   const inProgressTasks = tasks.filter(t => t.status === 'in_progress');
   const doneTasks = tasks.filter(t => t.status === 'done');
 
-  const priorityColors = {
-    high: 'bg-red-500',
-    medium: 'bg-amber-500',
-    low: 'bg-emerald-500'
-  };
-
-  const statusColors = {
-    todo: 'border-l-blue-500',
-    in_progress: 'border-l-amber-500',
-    done: 'border-l-emerald-500'
-  };
-
   const TaskItem = ({ task }: { task: Task }) => (
-    <div
-      className={`group bg-zinc-900 border border-zinc-800 ${statusColors[task.status]} border-l-4 rounded-lg p-4 hover:bg-zinc-800/50 transition-all`}
-    >
+    <div className={`card task-card status-${task.status} mb-3`}>
       <div className="flex items-start gap-3">
         {task.status === 'done' && (
           <input
             type="checkbox"
             checked={selectedTasks.has(task.id)}
             onChange={() => toggleSelection(task.id)}
-            className="mt-1 w-4 h-4 rounded accent-purple-500"
+            className="mt-1 w-4 h-4 accent-primary rounded"
           />
         )}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span className={`${priorityColors[task.priority]} text-white text-xs px-2 py-0.5 rounded font-medium`}>
+          <div className="flex items-center gap-2 mb-2">
+            <span className={`badge badge-${task.priority}`}>
               {getPriorityLabel(task.priority)}
             </span>
-            <span className="text-zinc-500 text-xs">
+            <span className="text-light text-xs">
               {getStatusLabel(task.status)}
             </span>
           </div>
-          <p className={`text-zinc-100 text-sm leading-relaxed ${task.status === 'done' ? 'line-through text-zinc-500' : ''}`}>
+          <p className={`text-text leading-relaxed ${task.status === 'done' ? 'line-through text-muted' : ''}`}>
             {task.content}
           </p>
         </div>
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1">
           <button
             onClick={() => cycleStatus(task.id)}
-            className="text-zinc-400 hover:text-white text-xs px-2 py-1 rounded hover:bg-zinc-700"
+            className="text-muted hover:text-primary text-sm px-3 py-1.5 rounded-lg hover:bg-background transition-colors"
           >
             切換
           </button>
           <button
             onClick={() => handleDelete(task.id)}
-            className="text-zinc-400 hover:text-red-400 text-xs px-2 py-1 rounded hover:bg-zinc-700"
+            className="text-muted hover:text-danger text-sm px-3 py-1.5 rounded-lg hover:bg-background transition-colors"
           >
             刪除
           </button>
@@ -167,111 +146,119 @@ export default function Dashboard() {
     </div>
   );
 
-  const TaskSection = ({ title, tasks, color }: { title: string; tasks: Task[]; color: string }) => {
+  const TaskSection = ({ title, tasks, dotColor }: { title: string; tasks: Task[]; dotColor: string }) => {
     if (tasks.length === 0) return null;
     return (
-      <div className="mb-6">
-        <div className="flex items-center gap-2 mb-3">
-          <div className={`w-2 h-2 rounded-full ${color}`} />
-          <h2 className="text-zinc-400 text-sm font-medium">{title}</h2>
-          <span className="text-zinc-600 text-xs">({tasks.length})</span>
+      <div className="mb-8">
+        <div className="flex items-center gap-2 mb-4">
+          <div className={`w-2.5 h-2.5 rounded-full ${dotColor}`} />
+          <h2 className="text-muted font-medium">{title}</h2>
+          <span className="text-light text-sm">({tasks.length})</span>
         </div>
-        <div className="space-y-2">
-          {tasks.map(task => <TaskItem key={task.id} task={task} />)}
-        </div>
+        {tasks.map(task => <TaskItem key={task.id} task={task} />)}
       </div>
     );
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
+    <div className="min-h-screen" style={{ background: 'var(--background)' }}>
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-800">
-        <div className="max-w-2xl mx-auto px-4 py-4">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">🦞</span>
-            <h1 className="text-lg font-semibold text-white">OpenClaw</h1>
+      <header className="border-b" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+        <div className="max-w-3xl mx-auto px-6 py-5">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">🦞</span>
+            <div>
+              <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>OpenClaw</h1>
+              <p className="text-sm" style={{ color: 'var(--muted)' }}>AI 任務管理</p>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-2xl mx-auto px-4 py-6">
-        {/* Input */}
-        <div className="mb-8">
-          <div className="flex gap-2">
+      {/* Main */}
+      <main className="max-w-3xl mx-auto px-6 py-8">
+        {/* Input Section */}
+        <div className="card mb-10">
+          <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--muted)' }}>新增任務</h3>
+          <div className="flex gap-3">
             <input
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="輸入任務，按 Enter 送出..."
-              className="flex-1 bg-zinc-900 text-white placeholder-zinc-500 px-4 py-3 rounded-lg border border-zinc-800 focus:border-zinc-600 focus:outline-none text-sm"
+              placeholder="輸入任務內容，按 Enter 送出..."
+              className="input flex-1"
             />
             <button
               onClick={handleAddTask}
               disabled={!inputText.trim()}
-              className="px-5 py-3 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg text-sm font-medium transition-colors"
+              className="btn-primary whitespace-nowrap"
             >
               送出
             </button>
           </div>
-          <p className="text-zinc-600 text-xs mt-2">
-            AI 會自動判斷優先級：緊急/急/馬上 → 高優先，有空/之後/不急 → 低優先
+          <p className="text-xs mt-3" style={{ color: 'var(--light)' }}>
+            AI 自動判斷優先級：「緊急」「急」「馬上」→ 高優先，「有空」「之後」「不急」→ 低優先
           </p>
         </div>
 
         {/* Tasks */}
         {tasks.length === 0 ? (
-          <div className="text-center py-20">
-            <div className="text-4xl mb-4">📋</div>
-            <p className="text-zinc-400">還沒有任務</p>
-            <p className="text-zinc-600 text-sm mt-1">在上方輸入任務開始吧</p>
+          <div className="text-center py-16">
+            <div className="text-5xl mb-4">📋</div>
+            <p className="text-lg" style={{ color: 'var(--muted)' }}>還沒有任務</p>
+            <p className="text-sm mt-1" style={{ color: 'var(--light)' }}>在上方輸入框新增你的第一個任務</p>
           </div>
         ) : (
           <>
-            <TaskSection title="待辦" tasks={todoTasks} color="bg-blue-500" />
-            <TaskSection title="進行中" tasks={inProgressTasks} color="bg-amber-500" />
-            <TaskSection title="已完成" tasks={doneTasks} color="bg-emerald-500" />
+            <TaskSection title="待辦" tasks={todoTasks} dotColor="bg-[#5B8BD4]" />
+            <TaskSection title="進行中" tasks={inProgressTasks} dotColor="bg-[#D4A84B]" />
+            <TaskSection title="已完成" tasks={doneTasks} dotColor="bg-[#5D8C61]" />
           </>
         )}
       </main>
 
       {/* Action Bar */}
       {selectedTasks.size > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-zinc-900/95 backdrop-blur border-t border-zinc-800 p-4">
-          <div className="max-w-2xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-zinc-300">
-                已選取 <span className="text-purple-400 font-medium">{selectedTasks.size}</span> 項
+        <div
+          className="fixed bottom-0 left-0 right-0 border-t p-4"
+          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+        >
+          <div className="max-w-3xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span style={{ color: 'var(--text)' }}>
+                已選取 <strong style={{ color: 'var(--primary)' }}>{selectedTasks.size}</strong> 項
               </span>
               <button
                 onClick={clearSelection}
-                className="text-zinc-500 hover:text-white text-sm"
+                className="text-sm hover:underline"
+                style={{ color: 'var(--muted)' }}
               >
-                取消
+                取消選取
               </button>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleMerge}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-sm"
-              >
+              <button onClick={handleMerge} className="btn-secondary text-sm py-2 px-4">
                 複製
               </button>
               <div className="relative group">
-                <button className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm">
+                <button className="btn-primary text-sm py-2 px-4">
                   發布
                 </button>
                 <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block">
-                  <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-1 min-w-[120px]">
-                    {['instagram', 'threads', 'x'].map(p => (
+                  <div className="card p-2 min-w-[140px] shadow-lg">
+                    {[
+                      { key: 'instagram', label: '📷 Instagram' },
+                      { key: 'threads', label: '🧵 Threads' },
+                      { key: 'x', label: '𝕏 X' },
+                    ].map(p => (
                       <button
-                        key={p}
-                        onClick={() => handlePublish(p)}
-                        className="w-full text-left px-3 py-2 text-sm text-white hover:bg-zinc-700 rounded"
+                        key={p.key}
+                        onClick={() => handlePublish(p.key)}
+                        className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-background transition-colors"
+                        style={{ color: 'var(--text)' }}
                       >
-                        {p === 'instagram' ? '📷 Instagram' : p === 'threads' ? '🧵 Threads' : '𝕏 X'}
+                        {p.label}
                       </button>
                     ))}
                   </div>
