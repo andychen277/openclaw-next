@@ -103,9 +103,14 @@ export function useMissionControl() {
   const fetchGatewaySync = useCallback(async () => {
     try {
       const data = await fetch('/api/gateway/sync').then(r => r.json());
-      if (data.active && data.tasks) {
-        setTasks(data.tasks);
-        saveLocalTasks(data.tasks);
+      if (data.active) {
+        if (data.tasks) {
+          setTasks(data.tasks);
+          saveLocalTasks(data.tasks);
+        }
+        if (data.outputs) {
+          setOutputs(data.outputs);
+        }
         setGatewayConnected(true);
         bridgeActive.current = true;
         return;
@@ -134,32 +139,58 @@ export function useMissionControl() {
       const data = await fetch('/api/tasks').then(r => r.json());
       if (data.tasks?.length > 0) {
         setTasks(prev => {
-          const existingIds = new Set([
-            ...prev.todo.map((t: Task) => t.id),
-            ...prev.in_progress.map((t: Task) => t.id),
-            ...prev.done.map((t: Task) => t.id),
-          ]);
-
-          const newTasks = (data.tasks as Task[]).filter(t => !existingIds.has(t.id));
-          if (newTasks.length === 0) return prev;
-
+          const serverTasks = data.tasks as Task[];
           const updated = {
             todo: [...prev.todo],
             in_progress: [...prev.in_progress],
             done: [...prev.done],
           };
 
-          for (const task of newTasks) {
-            const backendStatus = task.status || 'todo';
-            if (backendStatus === 'in_progress') {
-              updated.in_progress.push(task);
-            } else if (backendStatus === 'done') {
-              updated.done.push(task);
-            } else {
-              updated.todo.push(task);
+          let changed = false;
+
+          for (const sTask of serverTasks) {
+            // Find if task already exists in ANY column
+            let found = false;
+            for (const col of ['todo', 'in_progress', 'done'] as const) {
+              const idx = updated[col].findIndex(t => t.id === sTask.id);
+              if (idx !== -1) {
+                found = true;
+                // If status or frontendStatus changed, move it
+                const currentTask = updated[col][idx];
+                const newStatus = sTask.status || 'todo';
+                const newFrontendStatus = sTask.frontendStatus || (newStatus === 'done' ? 'done' : newStatus === 'in_progress' ? 'ongoing' : 'todo');
+
+                if (currentTask.status !== newStatus || currentTask.frontendStatus !== newFrontendStatus) {
+                  // Remove from current col
+                  updated[col].splice(idx, 1);
+                  // Add to new col
+                  const targetCol = newStatus === 'done' ? 'done' : (newStatus === 'in_progress' ? 'in_progress' : 'todo');
+                  updated[targetCol as keyof typeof updated].push({
+                    ...currentTask,
+                    ...sTask,
+                    frontendStatus: newFrontendStatus
+                  });
+                  changed = true;
+                }
+                break;
+              }
+            }
+
+            if (!found) {
+              // Add as new task
+              const backendStatus = sTask.status || 'todo';
+              if (backendStatus === 'in_progress') {
+                updated.in_progress.push(sTask);
+              } else if (backendStatus === 'done') {
+                updated.done.push(sTask);
+              } else {
+                updated.todo.push(sTask);
+              }
+              changed = true;
             }
           }
 
+          if (!changed) return prev;
           saveLocalTasks(updated);
           return updated;
         });
@@ -270,7 +301,7 @@ export function useMissionControl() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newTask),
-      }).catch(() => {});
+      }).catch(() => { });
 
       setInput('');
       setGatewayConnected(false);
@@ -289,7 +320,7 @@ export function useMissionControl() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ task: task.task, status: 'done', agent: task.task_type }),
-        }).catch(() => {});
+        }).catch(() => { });
       }
     }
 
