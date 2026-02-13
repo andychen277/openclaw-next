@@ -123,7 +123,11 @@ export function useMissionControl() {
 
   // --- Task Actions ---
 
-  const addTask = useCallback(async (taskText?: string) => {
+  const addTask = useCallback(async (
+    taskText?: string,
+    agentId?: string,
+    priority?: 'high' | 'medium' | 'low'
+  ) => {
     const text = (taskText || input).trim();
     if (!text) return;
     setLoading(true);
@@ -134,8 +138,9 @@ export function useMissionControl() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           task: text,
-          task_type: 'auto',
-          priority: detectPriority(text)
+          task_type: agentId || 'auto',
+          priority: priority || detectPriority(text),
+          frontendStatus: 'todo',  // 新任務預設進 Todo
         }),
       });
       setInput('');

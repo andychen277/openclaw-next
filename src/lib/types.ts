@@ -1,9 +1,12 @@
+export type TaskStatus = 'backlog' | 'todo' | 'pending' | 'ongoing' | 'review' | 'done';
+
 export interface Task {
   id: string;
   task: string;
   task_type: string;
   priority: 'high' | 'medium' | 'low';
-  status: 'todo' | 'in_progress' | 'done';
+  status: 'todo' | 'in_progress' | 'done';  // 後端狀態
+  frontendStatus?: TaskStatus;  // 前端擴展狀態
   timestamp?: string;
 }
 
@@ -17,6 +20,15 @@ export interface Output {
 export interface TasksData {
   todo: Task[];
   in_progress: Task[];
+  done: Task[];
+}
+
+export interface TasksDataExtended {
+  backlog: Task[];
+  todo: Task[];
+  pending: Task[];
+  ongoing: Task[];
+  review: Task[];
   done: Task[];
 }
 

@@ -6,12 +6,14 @@ import MissionControlHeader from '@/components/mission-control/MissionControlHea
 import AgentsPanel from '@/components/mission-control/AgentsPanel';
 import KanbanPanel from '@/components/mission-control/KanbanPanel';
 import ContentPanel from '@/components/mission-control/ContentPanel';
+import FloatingAddButton from '@/components/mission-control/FloatingAddButton';
 
 export default function MissionControlPage() {
   const mc = useMissionControl();
 
   return (
-    <MissionControlLayout
+    <>
+      <MissionControlLayout
       header={
         <MissionControlHeader
           metrics={mc.metrics}
@@ -51,6 +53,12 @@ export default function MissionControlPage() {
           copyResult={mc.copyResult}
         />
       }
+      activePanel={mc.activePanel}
+      setActivePanel={mc.setActivePanel}
     />
+
+      {/* 手機版浮動新增按鈕 */}
+      <FloatingAddButton onSubmit={mc.addTask} />
+    </>
   );
 }

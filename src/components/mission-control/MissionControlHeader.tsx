@@ -27,10 +27,10 @@ export default function MissionControlHeader({ metrics, status }: MissionControl
       {/* Title & Status */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-2xl font-bold text-text flex items-center gap-2">
+          <h1 className="text-lg md:text-2xl font-bold text-text flex items-center gap-2">
             🌊 OpenClaw Mission Control
           </h1>
-          <p className="text-sm text-muted mt-1">Agent Teams & Task Management</p>
+          <p className="text-xs md:text-sm text-muted mt-1">Agent Teams & Task Management</p>
         </div>
 
         <div className="flex items-center gap-4">
@@ -52,22 +52,22 @@ export default function MissionControlHeader({ metrics, status }: MissionControl
       </div>
 
       {/* System Metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="rounded-lg bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 p-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
+        <div className="rounded-lg bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 p-2 md:p-3">
           <p className="text-xs text-muted/70 mb-1">Total Tasks</p>
-          <p className="text-2xl font-bold text-primary">{metrics.totalTasks}</p>
+          <p className="text-xl md:text-2xl font-bold text-primary">{metrics.totalTasks}</p>
         </div>
-        <div className="rounded-lg bg-gradient-to-br from-amber-500/10 to-amber-500/5 border border-amber-500/20 p-3">
+        <div className="rounded-lg bg-gradient-to-br from-amber-500/10 to-amber-500/5 border border-amber-500/20 p-2 md:p-3">
           <p className="text-xs text-muted/70 mb-1">Active</p>
-          <p className="text-2xl font-bold text-amber-400">{metrics.activeTasks}</p>
+          <p className="text-xl md:text-2xl font-bold text-amber-400">{metrics.activeTasks}</p>
         </div>
-        <div className="rounded-lg bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 p-3">
+        <div className="rounded-lg bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 p-2 md:p-3">
           <p className="text-xs text-muted/70 mb-1">System Load</p>
-          <p className="text-2xl font-bold text-emerald-400">{(metrics.systemLoad * 100).toFixed(0)}%</p>
+          <p className="text-xl md:text-2xl font-bold text-emerald-400">{(metrics.systemLoad * 100).toFixed(0)}%</p>
         </div>
-        <div className="rounded-lg bg-gradient-to-br from-blue-500/10 to-blue-500/5 border border-blue-500/20 p-3">
+        <div className="rounded-lg bg-gradient-to-br from-blue-500/10 to-blue-500/5 border border-blue-500/20 p-2 md:p-3">
           <p className="text-xs text-muted/70 mb-1">Avg Response</p>
-          <p className="text-2xl font-bold text-blue-400">{metrics.avgResponseTime}ms</p>
+          <p className="text-xl md:text-2xl font-bold text-blue-400">{metrics.avgResponseTime}ms</p>
         </div>
       </div>
     </div>

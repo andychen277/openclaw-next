@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   DndContext,
   DragEndEvent,
@@ -11,7 +11,8 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import type { Task, TasksData } from '@/lib/types';
+import type { Task, TasksData, TasksDataExtended, TaskStatus } from '@/lib/types';
+import { STATUS_CONFIG } from '@/lib/constants';
 import TaskCard from './TaskCard';
 import SortableTaskCard from './SortableTaskCard';
 import TaskAssignModal from './TaskAssignModal';
@@ -22,17 +23,18 @@ interface KanbanBoardProps {
 }
 
 interface Column {
-  id: 'todo' | 'in_progress' | 'done';
+  id: TaskStatus;
   label: string;
   color: string;
   icon: string;
 }
 
-const COLUMNS: Column[] = [
-  { id: 'todo', label: 'To Do', color: 'border-slate-500/30 bg-slate-500/5', icon: '📋' },
-  { id: 'in_progress', label: 'In Progress', color: 'border-amber-500/30 bg-amber-500/5', icon: '⚡' },
-  { id: 'done', label: 'Done', color: 'border-emerald-500/30 bg-emerald-500/5', icon: '✅' },
-];
+const COLUMNS: Column[] = Object.values(STATUS_CONFIG).map(config => ({
+  id: config.id as TaskStatus,
+  label: config.label,
+  color: config.color,
+  icon: config.icon,
+}));
 
 const AGENTS = [
   { id: 'auto', label: 'Auto Assign', emoji: '🤖' },
@@ -45,12 +47,43 @@ const AGENTS = [
   { id: 'forum', label: 'Echo', emoji: '📢' },
 ];
 
+// Helper: 轉換 3 狀態 → 6 狀態
+function convertToExtended(tasks: TasksData): TasksDataExtended {
+  const extended: TasksDataExtended = {
+    backlog: [],
+    todo: [],
+    pending: [],
+    ongoing: [],
+    review: [],
+    done: [],
+  };
+
+  for (const [backendStatus, taskList] of Object.entries(tasks)) {
+    for (const task of taskList as Task[]) {
+      const frontendStatus = task.frontendStatus || mapBackendToFrontend(backendStatus);
+      extended[frontendStatus].push(task);
+    }
+  }
+
+  return extended;
+}
+
+// Helper: 後端狀態映射到前端預設狀態
+function mapBackendToFrontend(status: string): TaskStatus {
+  switch (status) {
+    case 'todo': return 'todo';
+    case 'in_progress': return 'ongoing';
+    case 'done': return 'done';
+    default: return 'todo';
+  }
+}
+
 export default function KanbanBoard({ tasks, onUpdateTask }: KanbanBoardProps) {
   const [filter, setFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [assignModalTask, setAssignModalTask] = useState<Task | null>(null);
-  const [localTasks, setLocalTasks] = useState(tasks);
+  const [localTasks, setLocalTasks] = useState<TasksDataExtended>(convertToExtended(tasks));
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -61,9 +94,9 @@ export default function KanbanBoard({ tasks, onUpdateTask }: KanbanBoardProps) {
   );
 
   // 更新 localTasks 當 props.tasks 變化時
-  useState(() => {
-    setLocalTasks(tasks);
-  });
+  useEffect(() => {
+    setLocalTasks(convertToExtended(tasks));
+  }, [tasks]);
 
   const filterTasks = (taskList: Task[]) => {
     let filtered = taskList;
@@ -99,12 +132,13 @@ export default function KanbanBoard({ tasks, onUpdateTask }: KanbanBoardProps) {
     }
 
     const activeTaskId = active.id as string;
-    const overColumnId = over.id as 'todo' | 'in_progress' | 'done';
+    const overColumnId = over.id as TaskStatus;
 
     // 如果拖到列頭，更新任務狀態
     if (COLUMNS.some(col => col.id === overColumnId)) {
       const task = findTaskById(activeTaskId);
-      if (task && task.status !== overColumnId) {
+      const currentFrontendStatus = task?.frontendStatus || mapBackendToFrontend(task?.status || 'todo');
+      if (task && currentFrontendStatus !== overColumnId) {
         updateTaskStatus(activeTaskId, overColumnId);
       }
     }
@@ -120,7 +154,7 @@ export default function KanbanBoard({ tasks, onUpdateTask }: KanbanBoardProps) {
     return null;
   };
 
-  const updateTaskStatus = (taskId: string, newStatus: Task['status']) => {
+  const updateTaskStatus = (taskId: string, newFrontendStatus: TaskStatus) => {
     const newTasks = { ...localTasks };
     let movedTask: Task | null = null;
 
@@ -136,10 +170,22 @@ export default function KanbanBoard({ tasks, onUpdateTask }: KanbanBoardProps) {
 
     // 添加到新列
     if (movedTask) {
-      movedTask = { ...movedTask, status: newStatus };
-      newTasks[newStatus] = [...(newTasks[newStatus] || []), movedTask];
+      // 映射前端狀態到後端狀態
+      const backendStatus = newFrontendStatus === 'backlog' ? 'todo' :
+                           newFrontendStatus === 'todo' ? 'todo' :
+                           newFrontendStatus === 'pending' ? 'todo' :
+                           newFrontendStatus === 'ongoing' ? 'in_progress' :
+                           newFrontendStatus === 'review' ? 'in_progress' :
+                           'done';
+
+      movedTask = {
+        ...movedTask,
+        frontendStatus: newFrontendStatus,
+        status: backendStatus
+      };
+      newTasks[newFrontendStatus] = [...(newTasks[newFrontendStatus] || []), movedTask];
       setLocalTasks(newTasks);
-      onUpdateTask?.(taskId, { status: newStatus });
+      onUpdateTask?.(taskId, { frontendStatus: newFrontendStatus, status: backendStatus });
     }
   };
 
@@ -200,7 +246,7 @@ export default function KanbanBoard({ tasks, onUpdateTask }: KanbanBoardProps) {
         </div>
 
         {/* Kanban 列 */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-2 lg:grid-rows-3">
           {COLUMNS.map(column => {
             const columnTasks = filterTasks(localTasks[column.id] || []);
 
@@ -244,19 +290,31 @@ export default function KanbanBoard({ tasks, onUpdateTask }: KanbanBoardProps) {
           })}
         </div>
 
-        {/* 統計摘要 */}
-        <div className="mt-6 grid grid-cols-3 gap-4 rounded-xl border border-border bg-surface p-4">
+        {/* 統計摘要 - 6 狀態 */}
+        <div className="mt-6 grid grid-cols-3 md:grid-cols-6 gap-4 rounded-xl border border-border bg-surface p-4">
+          <div className="text-center">
+            <p className="text-2xl font-bold text-gray-400">{localTasks.backlog?.length || 0}</p>
+            <p className="text-xs text-muted">Ideas</p>
+          </div>
           <div className="text-center">
             <p className="text-2xl font-bold text-slate-400">{localTasks.todo?.length || 0}</p>
-            <p className="text-xs text-muted">Pending</p>
+            <p className="text-xs text-muted">To Do</p>
           </div>
-          <div className="text-center border-l border-r border-border">
-            <p className="text-2xl font-bold text-amber-400">{localTasks.in_progress?.length || 0}</p>
+          <div className="text-center">
+            <p className="text-2xl font-bold text-violet-400">{localTasks.pending?.length || 0}</p>
+            <p className="text-xs text-muted">Waiting</p>
+          </div>
+          <div className="text-center">
+            <p className="text-2xl font-bold text-amber-400">{localTasks.ongoing?.length || 0}</p>
             <p className="text-xs text-muted">Active</p>
           </div>
           <div className="text-center">
+            <p className="text-2xl font-bold text-cyan-400">{localTasks.review?.length || 0}</p>
+            <p className="text-xs text-muted">Review</p>
+          </div>
+          <div className="text-center">
             <p className="text-2xl font-bold text-emerald-400">{localTasks.done?.length || 0}</p>
-            <p className="text-xs text-muted">Completed</p>
+            <p className="text-xs text-muted">Done</p>
           </div>
         </div>
       </div>
