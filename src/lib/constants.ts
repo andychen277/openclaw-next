@@ -1,8 +1,9 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5001';
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:18789';
 
 export const AGENTS: Record<string, { emoji: string; label: string }> = {
   general: { emoji: '\u{1F30A}', label: 'Ocean' },
   dev: { emoji: '\u{1F527}', label: 'Forge' },
+  devcc: { emoji: '\u{2699}\u{FE0F}', label: 'ForgeCC' },
   writer: { emoji: '\u{270D}\u{FE0F}', label: 'Quill' },
   imagegen: { emoji: '\u{1F3A8}', label: 'Pixel' },
   brainstorm: { emoji: '\u{1F4A1}', label: 'Spark' },
@@ -11,10 +12,10 @@ export const AGENTS: Record<string, { emoji: string; label: string }> = {
 
 export const SOCIAL_PLATFORMS = [
   { id: 'all', label: '全部' },
-  { id: 'ig', label: 'IG' },
-  { id: 'fb', label: 'FB' },
+  { id: 'facebook', label: 'Facebook' },
+  { id: 'instagram', label: 'Instagram' },
+  { id: 'threads', label: 'Threads' },
   { id: 'twitter', label: 'X' },
-  { id: 'linkedin', label: 'LinkedIn' },
 ] as const;
 
 export const PODCAST_DURATIONS = ['3', '5', '10'] as const;

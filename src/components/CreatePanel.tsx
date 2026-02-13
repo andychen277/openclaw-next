@@ -2,6 +2,7 @@
 
 import { SOCIAL_PLATFORMS, PODCAST_DURATIONS, VIDEO_OPTIONS } from '@/lib/constants';
 import type { ResultType } from '@/lib/types';
+import SocialSharePanel from './social/SocialSharePanel';
 
 interface CreatePanelProps {
   result: string;
@@ -55,6 +56,13 @@ export default function CreatePanel({
           >
             📋 複製
           </button>
+        </div>
+      )}
+
+      {/* Social Share Panel */}
+      {result && resultType === 'social' && (
+        <div className="mb-5">
+          <SocialSharePanel content={result} />
         </div>
       )}
 

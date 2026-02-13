@@ -24,5 +24,35 @@ export interface BackendStatus {
   status: string;
 }
 
-export type TabType = 'tasks' | 'outputs' | 'genius' | 'create';
+export type TabType = 'tasks' | 'outputs' | 'genius' | 'create' | 'dashboard';
 export type ResultType = 'merge' | 'social' | 'image' | 'podcast' | 'video' | '';
+
+export interface Agent {
+  id: string;
+  name: string;
+  emoji: string;
+  label: string;
+  status: 'idle' | 'working' | 'thinking' | 'error';
+  workspace: string;
+  model: string;
+  currentTask?: string;
+  stats: {
+    completedTasks: number;
+    failedTasks: number;
+    averageResponseTime: number;
+    uptime: number;
+  };
+}
+
+export interface AgentMetrics {
+  totalTasks: number;
+  activeTasks: number;
+  systemLoad: number;
+  avgResponseTime: number;
+}
+
+export type SocialPlatform = 'facebook' | 'instagram' | 'threads' | 'twitter';
+
+export interface SocialAuthStatus {
+  [platform: string]: boolean;
+}
