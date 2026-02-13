@@ -1,15 +1,17 @@
 import { NextResponse } from 'next/server';
+import { kvGet, kvSet } from '@/lib/kv';
 import type { TasksData } from '@/lib/types';
 
-// Server-side Gateway task state
-// Updated by the gateway-bridge script running on the local machine
-declare global {
-  var __gatewayTaskState: { tasks: TasksData; updatedAt: number } | undefined;
+const GATEWAY_KEY = 'openclaw:gateway_state';
+
+interface GatewayState {
+  tasks: TasksData;
+  updatedAt: number;
 }
 
 // GET: Return Gateway task state + whether bridge is active
 export async function GET() {
-  const state = global.__gatewayTaskState;
+  const state = await kvGet<GatewayState>(GATEWAY_KEY);
   if (!state) {
     return NextResponse.json({ tasks: null, active: false });
   }
@@ -41,14 +43,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid task data' }, { status: 400 });
     }
 
-    global.__gatewayTaskState = {
+    await kvSet<GatewayState>(GATEWAY_KEY, {
       tasks: {
         todo: data.todo || [],
         in_progress: data.in_progress || [],
         done: data.done || [],
       },
       updatedAt: Date.now(),
-    };
+    });
 
     return NextResponse.json({ ok: true });
   } catch {

@@ -245,7 +245,7 @@ export function useMissionControl() {
       setGatewayConnected(true);
       await fetchTasks();
     } catch {
-      // Gateway unavailable - save locally
+      // Gateway unavailable - save locally + to server
       const newTask: Task = {
         id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         task: text,
@@ -264,6 +264,13 @@ export function useMissionControl() {
         saveLocalTasks(updated);
         return updated;
       });
+
+      // Also save to server so other devices and Telegram can see it
+      fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newTask),
+      }).catch(() => {});
 
       setInput('');
       setGatewayConnected(false);

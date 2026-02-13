@@ -1,20 +1,21 @@
 import { NextResponse } from 'next/server';
+import { kvGet, kvSet } from '@/lib/kv';
 import type { Task } from '@/lib/types';
 
-// Server-side task store (in-memory)
-// Persists within warm Lambda instances. For production, use Vercel KV or database.
-declare global {
-  var __openclawServerTasks: Task[] | undefined;
+const TASKS_KEY = 'openclaw:tasks';
+
+async function getTasks(): Promise<Task[]> {
+  return (await kvGet<Task[]>(TASKS_KEY)) ?? [];
 }
 
-function getStore(): Task[] {
-  if (!global.__openclawServerTasks) global.__openclawServerTasks = [];
-  return global.__openclawServerTasks;
+async function saveTasks(tasks: Task[]): Promise<void> {
+  await kvSet(TASKS_KEY, tasks);
 }
 
-// GET: Read all server-side tasks (from Telegram, etc.)
+// GET: Read all server-side tasks
 export async function GET() {
-  return NextResponse.json({ tasks: getStore() });
+  const tasks = await getTasks();
+  return NextResponse.json({ tasks });
 }
 
 // POST: Add a new task
@@ -24,7 +25,12 @@ export async function POST(req: Request) {
     if (!task.id || !task.task) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
-    getStore().push(task);
+    const tasks = await getTasks();
+    // Avoid duplicates
+    if (!tasks.some(t => t.id === task.id)) {
+      tasks.push(task);
+      await saveTasks(tasks);
+    }
     return NextResponse.json({ ok: true, task });
   } catch {
     return NextResponse.json({ error: 'Failed to add task' }, { status: 500 });
@@ -36,9 +42,10 @@ export async function DELETE(req: Request) {
   try {
     const { ids } = await req.json();
     if (Array.isArray(ids)) {
-      global.__openclawServerTasks = getStore().filter(t => !ids.includes(t.id));
+      const tasks = await getTasks();
+      await saveTasks(tasks.filter(t => !ids.includes(t.id)));
     } else {
-      global.__openclawServerTasks = [];
+      await saveTasks([]);
     }
     return NextResponse.json({ ok: true });
   } catch {
