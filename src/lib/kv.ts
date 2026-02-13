@@ -1,31 +1,43 @@
 // Persistent KV storage for Vercel serverless
-// Uses Upstash Redis REST API (via Vercel KV integration)
+// Uses Redis (via Vercel Marketplace) with TCP connection
 // Falls back to globalThis for local dev (not persistent across cold starts)
 
-const KV_URL = process.env.KV_REST_API_URL;
-const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+import { createClient, type RedisClientType } from 'redis';
 
-function isKVAvailable(): boolean {
-  return !!(KV_URL && KV_TOKEN);
-}
+let client: RedisClientType | null = null;
+let connecting = false;
 
-async function redisCommand(...args: string[]): Promise<unknown> {
-  const res = await fetch(`${KV_URL}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${KV_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(args),
-  });
-  const data = await res.json();
-  return data.result;
+async function getClient(): Promise<RedisClientType | null> {
+  const url = process.env.REDIS_URL;
+  if (!url) return null;
+
+  if (client?.isReady) return client;
+
+  if (connecting) {
+    // Wait for ongoing connection
+    await new Promise(resolve => setTimeout(resolve, 100));
+    return client?.isReady ? client : null;
+  }
+
+  connecting = true;
+  try {
+    client = createClient({ url, socket: { connectTimeout: 5000 } });
+    client.on('error', () => { /* suppress connection errors */ });
+    await client.connect();
+    return client;
+  } catch {
+    client = null;
+    return null;
+  } finally {
+    connecting = false;
+  }
 }
 
 export async function kvGet<T>(key: string): Promise<T | null> {
-  if (isKVAvailable()) {
-    const result = await redisCommand('GET', key);
-    if (typeof result === 'string') {
+  const c = await getClient();
+  if (c) {
+    const result = await c.get(key);
+    if (result) {
       try { return JSON.parse(result) as T; } catch { return null; }
     }
     return null;
@@ -35,8 +47,9 @@ export async function kvGet<T>(key: string): Promise<T | null> {
 }
 
 export async function kvSet<T>(key: string, value: T): Promise<void> {
-  if (isKVAvailable()) {
-    await redisCommand('SET', key, JSON.stringify(value));
+  const c = await getClient();
+  if (c) {
+    await c.set(key, JSON.stringify(value));
     return;
   }
   (globalThis as Record<string, unknown>)[`__kv_${key}`] = value;
