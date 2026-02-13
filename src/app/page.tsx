@@ -35,7 +35,6 @@ export default function MissionControlPage() {
             tasks={mc.tasks}
             updateTask={mc.updateTask}
             error={mc.error}
-            gatewayConnected={mc.gatewayConnected}
           />
         }
         rightPanel={
