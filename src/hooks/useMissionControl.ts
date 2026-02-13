@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_BASE } from '@/lib/constants';
 import { detectPriority } from '@/lib/priority';
 import type {
@@ -87,6 +87,9 @@ export function useMissionControl() {
     setTasks(loadLocalTasks());
   }, []);
 
+  // Bridge active flag - when Gateway Bridge is running, skip direct Gateway polling
+  const bridgeActive = useRef(false);
+
   // --- Data Fetching Functions ---
 
   const fetchAgents = useCallback(async () => {
@@ -96,7 +99,24 @@ export function useMissionControl() {
     } catch { /* silent */ }
   }, []);
 
+  // Poll Gateway via Bridge (Vercel ← Bridge ← Gateway)
+  const fetchGatewaySync = useCallback(async () => {
+    try {
+      const data = await fetch('/api/gateway/sync').then(r => r.json());
+      if (data.active && data.tasks) {
+        setTasks(data.tasks);
+        saveLocalTasks(data.tasks);
+        setGatewayConnected(true);
+        bridgeActive.current = true;
+        return;
+      }
+    } catch { /* silent */ }
+    bridgeActive.current = false;
+  }, []);
+
+  // Direct Gateway polling (only when bridge is NOT active)
   const fetchTasks = useCallback(async () => {
+    if (bridgeActive.current) return;
     try {
       const data = await api(`/data/tasks.json?t=${Date.now()}`);
       setTasks(data);
@@ -107,8 +127,9 @@ export function useMissionControl() {
     }
   }, []);
 
-  // Fetch server-side tasks (from Telegram, etc.)
+  // Fetch server-side tasks from Telegram (only when bridge is NOT active)
   const fetchServerTasks = useCallback(async () => {
+    if (bridgeActive.current) return;
     try {
       const data = await fetch('/api/tasks').then(r => r.json());
       if (data.tasks?.length > 0) {
@@ -169,6 +190,7 @@ export function useMissionControl() {
   // Unified polling
   useEffect(() => {
     fetchAgents();
+    fetchGatewaySync();
     fetchTasks();
     fetchServerTasks();
     fetchOutputs();
@@ -178,6 +200,7 @@ export function useMissionControl() {
     const poll = () => {
       if (document.hidden) return;
       fetchAgents();
+      fetchGatewaySync();
       fetchTasks();
       fetchServerTasks();
       fetchOutputs();
@@ -187,7 +210,7 @@ export function useMissionControl() {
 
     const interval = setInterval(poll, 5000);
     return () => clearInterval(interval);
-  }, [fetchAgents, fetchTasks, fetchServerTasks, fetchOutputs, fetchGenius, fetchStatus]);
+  }, [fetchAgents, fetchGatewaySync, fetchTasks, fetchServerTasks, fetchOutputs, fetchGenius, fetchStatus]);
 
   // --- Task Actions ---
 
@@ -407,9 +430,9 @@ export function useMissionControl() {
 
   const refresh = useCallback(async () => {
     await Promise.all([
-      fetchAgents(), fetchTasks(), fetchServerTasks(), fetchOutputs(), fetchGenius(), fetchStatus(),
+      fetchAgents(), fetchGatewaySync(), fetchTasks(), fetchServerTasks(), fetchOutputs(), fetchGenius(), fetchStatus(),
     ]);
-  }, [fetchAgents, fetchTasks, fetchServerTasks, fetchOutputs, fetchGenius, fetchStatus]);
+  }, [fetchAgents, fetchGatewaySync, fetchTasks, fetchServerTasks, fetchOutputs, fetchGenius, fetchStatus]);
 
   // Computed metrics from real task data
   const metrics: AgentMetrics = {
