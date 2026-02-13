@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "OpenClaw Dashboard",
-  description: "AI-Powered Task Management Dashboard",
+  title: "OpenClaw Mission Control",
+  description: "AI Agent Teams & Task Management System",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
