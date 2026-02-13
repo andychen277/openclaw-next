@@ -11,11 +11,15 @@
 
 const WebSocket = require('ws');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 const GATEWAY_WS = 'ws://127.0.0.1:18789';
-const VERCEL_URL = 'https://openclaw-next.vercel.app';
+const VERCEL_URL = process.env.VERCEL_URL || 'http://localhost:3000';
 const GATEWAY_TOKEN = '12ea8dc8f7d66267ccb9c66c572c8ce9c33b92e71763b0116dce2e87d09c488f';
 const POLL_INTERVAL = 10000; // 10s
+const WORKSPACE_DIR = path.join(os.homedir(), '.openclaw', 'workspace');
 
 // --- Helpers ---
 const hex = () => crypto.randomBytes(8).toString('hex');
@@ -199,12 +203,25 @@ async function dispatchTask(task) {
 // --- Sync state to Vercel ---
 async function syncToVercel(tasks) {
   try {
-    // 1. Fetch current outputs from local Gateway
-    const outRes = await fetch(`${GATEWAY_WS.replace('ws://', 'http://')}/list_outputs`).catch(() => null);
-    const outData = outRes ? await outRes.json() : { outputs: [] };
+    // 1. Scan local workspace for outputs (.md files)
+    let outputs = [];
+    if (fs.existsSync(WORKSPACE_DIR)) {
+      const files = fs.readdirSync(WORKSPACE_DIR);
+      outputs = files
+        .filter(f => f.endsWith('.md') && !['SOUL.md', 'AGENTS.md', 'BOOTSTRAP.md', 'IDENTITY.md', 'USER.md', 'HEARTBEAT.md', 'TOOLS.md'].includes(f))
+        .map(f => {
+          const stats = fs.statSync(path.join(WORKSPACE_DIR, f));
+          return {
+            filename: f,
+            size: stats.size,
+            modified: stats.mtime.toISOString(),
+          };
+        })
+        .sort((a, b) => new Date(b.modified) - new Date(a.modified));
+    }
 
     // 2. Push tasks and outputs to Vercel
-    await fetch(`${VERCEL_URL}/api/gateway/sync`, {
+    const res = await fetch(`${VERCEL_URL}/api/gateway/sync`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -216,10 +233,18 @@ async function syncToVercel(tasks) {
           in_progress: tasks.filter(t => t.status === 'in_progress'),
           done: tasks.filter(t => t.status === 'done'),
         },
-        outputs: outData.outputs || [],
+        outputs: outputs,
       }),
     });
-    // log('📤 State synced to Vercel');
+
+    if (!res.ok) {
+      const text = await res.text();
+      if (text.startsWith('<!doctype')) {
+        log(`⚠️ Vercel sync error: Received HTML (check VERCEL_URL: ${VERCEL_URL})`);
+      } else {
+        log(`⚠️ Vercel sync error: ${res.status}`);
+      }
+    }
   } catch (e) {
     log(`⚠️ Sync error: ${e.message}`);
   }
@@ -228,7 +253,8 @@ async function syncToVercel(tasks) {
 async function pollTasks() {
   try {
     const res = await fetch(`${VERCEL_URL}/api/tasks`);
-    const data = await res.json();
+    if (!res.ok) return;
+    const data = await res.json().catch(() => ({}));
     const allTasks = data.tasks || [];
 
     // Sync full state to Vercel so Dashboard sees updates
