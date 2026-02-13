@@ -146,7 +146,9 @@ export function useMissionControl() {
       setInput('');
       await fetchTasks();
     } catch (e) {
-      setError(e instanceof Error ? e.message : '無法連接伺服器');
+      const msg = e instanceof Error ? e.message : '無法連接伺服器';
+      setError(msg);
+      throw new Error(msg);  // 重新拋出讓 Modal 知道失敗
     } finally {
       setLoading(false);
     }

@@ -23,6 +23,7 @@ export default function TaskCreateModal({
   const [agentId, setAgentId] = useState(preselectedAgent || 'auto');
   const [priority, setPriority] = useState<'high' | 'medium' | 'low' | 'auto'>('auto');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   // Auto-detect priority when task changes
   const detectedPriority = priority === 'auto' ? detectPriority(task) : priority;
@@ -32,6 +33,7 @@ export default function TaskCreateModal({
     if (!task.trim()) return;
 
     setLoading(true);
+    setError('');
     try {
       await onSubmit({
         task: task.trim(),
@@ -39,8 +41,8 @@ export default function TaskCreateModal({
         priority: detectedPriority,
       });
       onClose();
-    } catch (error) {
-      console.error('Failed to create task:', error);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '送出失敗，請確認 Gateway 是否運行中');
     } finally {
       setLoading(false);
     }
@@ -150,6 +152,13 @@ export default function TaskCreateModal({
               })}
             </div>
           </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              {error}
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="flex gap-3 pt-2">

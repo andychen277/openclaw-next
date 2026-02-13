@@ -33,6 +33,7 @@ export default function MissionControlPage() {
         <KanbanPanel
           tasks={mc.tasks}
           updateTask={mc.updateTask}
+          error={mc.error}
         />
       }
       rightPanel={
