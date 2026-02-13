@@ -52,3 +52,26 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: 'Failed to delete' }, { status: 500 });
   }
 }
+
+// PUT: Update an existing task
+export async function PUT(req: Request) {
+  try {
+    const updates = await req.json() as Partial<Task> & { id: string };
+    if (!updates.id) {
+      return NextResponse.json({ error: 'Missing task id' }, { status: 400 });
+    }
+
+    const tasks = await getTasks();
+    const idx = tasks.findIndex(t => t.id === updates.id);
+
+    if (idx !== -1) {
+      tasks[idx] = { ...tasks[idx], ...updates };
+      await saveTasks(tasks);
+      return NextResponse.json({ ok: true, task: tasks[idx] });
+    }
+
+    return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+  } catch {
+    return NextResponse.json({ error: 'Failed to update task' }, { status: 500 });
+  }
+}

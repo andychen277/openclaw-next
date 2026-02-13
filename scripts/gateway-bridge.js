@@ -25,6 +25,7 @@ const log = (msg) => console.log(`[${new Date().toLocaleTimeString()}] ${msg}`);
 let ws = null;
 let connected = false;
 let pendingCallbacks = new Map();
+let runTaskMap = new Map(); // runId -> taskId
 
 function sendReq(method, params = {}) {
   return new Promise((resolve, reject) => {
@@ -105,23 +106,38 @@ function connectGateway() {
       }
 
       // Handle agent/chat events (log task progress)
-      if (msg.type === 'event' && msg.event === 'chat' && msg.payload?.state === 'final') {
-        const content = msg.payload.message?.content;
-        if (content?.[0]?.text) {
-          const preview = content[0].text.substring(0, 100);
-          log(`💬 Agent response: ${preview}...`);
+      if (msg.type === 'event' && msg.event === 'chat') {
+        const runId = msg.payload?.runId;
+        const taskId = runTaskMap.get(runId);
 
-          // Notify Telegram about agent response
-          const taskSession = msg.payload.sessionKey || 'main';
-          fetch(`${VERCEL_URL}/api/telegram/notify`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              task: `[${taskSession}] Agent completed`,
-              status: 'done',
-              agent: taskSession,
-            }),
-          }).catch(() => {});
+        if (msg.payload?.state === 'final') {
+          const content = msg.payload.message?.content;
+          if (content?.[0]?.text) {
+            const preview = content[0].text.substring(0, 100);
+            log(`💬 Agent response: ${preview}...`);
+
+            // Update status to done in Redis
+            if (taskId) {
+              fetch(`${VERCEL_URL}/api/tasks`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: taskId, status: 'done', frontendStatus: 'done' }),
+              }).catch(() => { });
+              runTaskMap.delete(runId);
+            }
+
+            // Notify Telegram
+            const taskSession = msg.payload.sessionKey || 'main';
+            fetch(`${VERCEL_URL}/api/telegram/notify`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                task: `[${taskSession}] Agent completed`,
+                status: 'done',
+                agent: taskSession,
+              }),
+            }).catch(() => { });
+          }
         }
       }
     });
@@ -156,7 +172,7 @@ function connectGateway() {
 async function dispatchTask(task) {
   if (!connected) {
     log('⚠️ Gateway not connected, skipping task dispatch');
-    return false;
+    return null;
   }
 
   const sessionKey = 'main'; // Dispatch to main agent (Ocean)
@@ -172,12 +188,12 @@ async function dispatchTask(task) {
 
     if (res.status === 'started') {
       log(`🚀 Dispatched: "${task.task}" → ${sessionKey} (run: ${res.runId})`);
-      return true;
+      return res.runId;
     }
   } catch (e) {
     log(`❌ Dispatch failed: ${e.message}`);
   }
-  return false;
+  return null;
 }
 
 // --- Poll Redis for new tasks ---
@@ -186,24 +202,24 @@ async function pollTasks() {
     const res = await fetch(`${VERCEL_URL}/api/tasks`);
     const data = await res.json();
 
-    if (!data.tasks?.length) return;
+    // Only process tasks that are in 'todo' status
+    const pendingTasks = (data.tasks || []).filter(t => t.status === 'todo');
+    if (!pendingTasks.length) return;
 
-    log(`📥 Found ${data.tasks.length} task(s) in Redis`);
+    log(`📥 Found ${pendingTasks.length} pending task(s) in Redis`);
 
-    const dispatched = [];
-    for (const task of data.tasks) {
-      const ok = await dispatchTask(task);
-      if (ok) dispatched.push(task.id);
-    }
-
-    // Remove dispatched tasks from Redis
-    if (dispatched.length > 0) {
-      await fetch(`${VERCEL_URL}/api/tasks`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: dispatched }),
-      });
-      log(`✅ ${dispatched.length} task(s) dispatched and cleared`);
+    for (const task of pendingTasks) {
+      const runId = await dispatchTask(task);
+      if (runId) {
+        runTaskMap.set(runId, task.id);
+        // Mark as ongoing in Redis
+        await fetch(`${VERCEL_URL}/api/tasks`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: task.id, status: 'in_progress', frontendStatus: 'ongoing' }),
+        });
+        log(`✅ Task ${task.id} marked as ongoing`);
+      }
     }
   } catch (e) {
     log(`⚠️ Poll error: ${e.message}`);
