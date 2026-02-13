@@ -13,10 +13,10 @@ import type {
   Task
 } from '@/lib/types';
 
-// Unified API helper
+// Unified API helper with timeout
 async function api(path: string, options?: RequestInit) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+  const timeout = setTimeout(() => controller.abort(), 5000);
   try {
     const res = await fetch(`${API_BASE}${path}`, {
       ...options,
@@ -57,14 +57,8 @@ export type PanelType = 'agents' | 'tasks' | 'content' | 'create';
 export function useMissionControl() {
   // Agent state
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [metrics, setMetrics] = useState<AgentMetrics>({
-    totalTasks: 0,
-    activeTasks: 0,
-    systemLoad: 0,
-    avgResponseTime: 0,
-  });
 
-  // Task state - initialize from localStorage
+  // Task state
   const [tasks, setTasks] = useState<TasksData>({ todo: [], in_progress: [], done: [] });
   const [gatewayConnected, setGatewayConnected] = useState<boolean | null>(null);
 
@@ -99,12 +93,6 @@ export function useMissionControl() {
     try {
       const data = await fetch('/api/agents/status').then(r => r.json());
       setAgents(data.agents || []);
-      setMetrics(data.metrics || {
-        totalTasks: 0,
-        activeTasks: 0,
-        systemLoad: 0,
-        avgResponseTime: 0,
-      });
     } catch { /* silent */ }
   }, []);
 
@@ -116,8 +104,46 @@ export function useMissionControl() {
       setGatewayConnected(true);
     } catch {
       setGatewayConnected(false);
-      // Keep current tasks (from localStorage or previous state)
     }
+  }, []);
+
+  // Fetch server-side tasks (from Telegram, etc.)
+  const fetchServerTasks = useCallback(async () => {
+    try {
+      const data = await fetch('/api/tasks').then(r => r.json());
+      if (data.tasks?.length > 0) {
+        setTasks(prev => {
+          const existingIds = new Set([
+            ...prev.todo.map((t: Task) => t.id),
+            ...prev.in_progress.map((t: Task) => t.id),
+            ...prev.done.map((t: Task) => t.id),
+          ]);
+
+          const newTasks = (data.tasks as Task[]).filter(t => !existingIds.has(t.id));
+          if (newTasks.length === 0) return prev;
+
+          const updated = {
+            todo: [...prev.todo],
+            in_progress: [...prev.in_progress],
+            done: [...prev.done],
+          };
+
+          for (const task of newTasks) {
+            const backendStatus = task.status || 'todo';
+            if (backendStatus === 'in_progress') {
+              updated.in_progress.push(task);
+            } else if (backendStatus === 'done') {
+              updated.done.push(task);
+            } else {
+              updated.todo.push(task);
+            }
+          }
+
+          saveLocalTasks(updated);
+          return updated;
+        });
+      }
+    } catch { /* silent */ }
   }, []);
 
   const fetchOutputs = useCallback(async () => {
@@ -144,6 +170,7 @@ export function useMissionControl() {
   useEffect(() => {
     fetchAgents();
     fetchTasks();
+    fetchServerTasks();
     fetchOutputs();
     fetchGenius();
     fetchStatus();
@@ -152,6 +179,7 @@ export function useMissionControl() {
       if (document.hidden) return;
       fetchAgents();
       fetchTasks();
+      fetchServerTasks();
       fetchOutputs();
       fetchGenius();
       fetchStatus();
@@ -159,14 +187,15 @@ export function useMissionControl() {
 
     const interval = setInterval(poll, 5000);
     return () => clearInterval(interval);
-  }, [fetchAgents, fetchTasks, fetchOutputs, fetchGenius, fetchStatus]);
+  }, [fetchAgents, fetchTasks, fetchServerTasks, fetchOutputs, fetchGenius, fetchStatus]);
 
   // --- Task Actions ---
 
   const addTask = useCallback(async (
     taskText?: string,
     agentId?: string,
-    priority?: 'high' | 'medium' | 'low'
+    priority?: 'high' | 'medium' | 'low',
+    frontendStatus?: 'backlog' | 'todo'
   ) => {
     const text = (taskText || input).trim();
     if (!text) return;
@@ -175,6 +204,7 @@ export function useMissionControl() {
 
     const taskPriority = priority || detectPriority(text);
     const taskType = agentId || 'auto';
+    const destStatus = frontendStatus || 'todo';
 
     try {
       // Try Gateway first
@@ -185,7 +215,7 @@ export function useMissionControl() {
           task: text,
           task_type: taskType,
           priority: taskPriority,
-          frontendStatus: 'todo',
+          frontendStatus: destStatus,
         }),
       });
       setInput('');
@@ -199,7 +229,7 @@ export function useMissionControl() {
         task_type: taskType,
         priority: taskPriority,
         status: 'todo',
-        frontendStatus: 'todo',
+        frontendStatus: destStatus,
         timestamp: new Date().toISOString(),
       };
 
@@ -214,13 +244,25 @@ export function useMissionControl() {
 
       setInput('');
       setGatewayConnected(false);
-      // Don't throw - task was saved locally
     } finally {
       setLoading(false);
     }
   }, [input, fetchTasks]);
 
   const updateTask = useCallback(async (taskId: string, updates: Partial<Task>) => {
+    // Notify Telegram when task moves to done
+    if (updates.frontendStatus === 'done') {
+      const allTasks = [...tasks.todo, ...tasks.in_progress, ...tasks.done];
+      const task = allTasks.find(t => t.id === taskId);
+      if (task) {
+        fetch('/api/telegram/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task: task.task, status: 'done', agent: task.task_type }),
+        }).catch(() => {});
+      }
+    }
+
     // Update local state immediately
     setTasks(prev => {
       const updateTaskInList = (taskList: Task[]) =>
@@ -239,7 +281,7 @@ export function useMissionControl() {
     try {
       await fetchTasks();
     } catch { /* keep local state */ }
-  }, [fetchTasks]);
+  }, [fetchTasks, tasks]);
 
   // --- Content Actions ---
 
@@ -365,9 +407,17 @@ export function useMissionControl() {
 
   const refresh = useCallback(async () => {
     await Promise.all([
-      fetchAgents(), fetchTasks(), fetchOutputs(), fetchGenius(), fetchStatus(),
+      fetchAgents(), fetchTasks(), fetchServerTasks(), fetchOutputs(), fetchGenius(), fetchStatus(),
     ]);
-  }, [fetchAgents, fetchTasks, fetchOutputs, fetchGenius, fetchStatus]);
+  }, [fetchAgents, fetchTasks, fetchServerTasks, fetchOutputs, fetchGenius, fetchStatus]);
+
+  // Computed metrics from real task data
+  const metrics: AgentMetrics = {
+    totalTasks: tasks.todo.length + tasks.in_progress.length + tasks.done.length,
+    activeTasks: tasks.in_progress.length,
+    systemLoad: 0,
+    avgResponseTime: 0,
+  };
 
   return {
     agents, metrics,

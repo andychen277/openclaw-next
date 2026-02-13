@@ -4,7 +4,7 @@ import { useState } from 'react';
 import TaskCreateModal from '@/components/dashboard/TaskCreateModal';
 
 interface FloatingAddButtonProps {
-  onSubmit: (task: string, agentId?: string, priority?: 'high' | 'medium' | 'low') => Promise<void>;
+  onSubmit: (task: string, agentId?: string, priority?: 'high' | 'medium' | 'low', frontendStatus?: 'backlog' | 'todo') => Promise<void>;
 }
 
 export default function FloatingAddButton({ onSubmit }: FloatingAddButtonProps) {
@@ -14,9 +14,9 @@ export default function FloatingAddButton({ onSubmit }: FloatingAddButtonProps) 
     task: string;
     agentId: string;
     priority: 'high' | 'medium' | 'low';
+    frontendStatus: 'backlog' | 'todo';
   }) => {
-    await onSubmit(data.task, data.agentId, data.priority);
-    setShowModal(false);
+    await onSubmit(data.task, data.agentId, data.priority, data.frontendStatus);
   };
 
   return (

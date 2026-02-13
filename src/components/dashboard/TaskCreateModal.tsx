@@ -9,6 +9,7 @@ interface TaskCreateModalProps {
     task: string;
     agentId: string;
     priority: 'high' | 'medium' | 'low';
+    frontendStatus: 'backlog' | 'todo';
   }) => Promise<void>;
   onClose: () => void;
   preselectedAgent?: string;
@@ -22,6 +23,7 @@ export default function TaskCreateModal({
   const [task, setTask] = useState('');
   const [agentId, setAgentId] = useState(preselectedAgent || 'auto');
   const [priority, setPriority] = useState<'high' | 'medium' | 'low' | 'auto'>('auto');
+  const [destination, setDestination] = useState<'backlog' | 'todo'>('todo');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -39,10 +41,11 @@ export default function TaskCreateModal({
         task: task.trim(),
         agentId,
         priority: detectedPriority,
+        frontendStatus: destination,
       });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '送出失敗，請確認 Gateway 是否運行中');
+      setError(err instanceof Error ? err.message : '送出失敗，請稍後再試');
     } finally {
       setLoading(false);
     }
@@ -64,13 +67,13 @@ export default function TaskCreateModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-2xl rounded-t-2xl lg:rounded-2xl border border-border bg-surface p-6 shadow-2xl">
+      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-t-2xl lg:rounded-2xl border border-border bg-surface p-5 shadow-2xl">
         <h3 className="text-lg font-semibold text-text mb-4">➕ 新增任務</h3>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {/* Task Description */}
           <div>
-            <label className="block text-sm font-medium text-text mb-2">
+            <label className="block text-sm font-medium text-text mb-1.5">
               任務描述 <span className="text-red-400">*</span>
             </label>
             <textarea
@@ -84,9 +87,42 @@ export default function TaskCreateModal({
             />
           </div>
 
+          {/* Destination Selection */}
+          <div>
+            <label className="block text-sm font-medium text-text mb-1.5">
+              放入
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDestination('todo')}
+                disabled={loading}
+                className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium transition-all ${
+                  destination === 'todo'
+                    ? 'border-slate-400/50 bg-slate-500/10 text-text ring-2 ring-slate-400/30'
+                    : 'border-border bg-background text-muted hover:border-slate-400/50'
+                } disabled:opacity-50`}
+              >
+                📋 待辦清單
+              </button>
+              <button
+                type="button"
+                onClick={() => setDestination('backlog')}
+                disabled={loading}
+                className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium transition-all ${
+                  destination === 'backlog'
+                    ? 'border-gray-400/50 bg-gray-500/10 text-text ring-2 ring-gray-400/30'
+                    : 'border-border bg-background text-muted hover:border-gray-400/50'
+                } disabled:opacity-50`}
+              >
+                💡 想法暫存
+              </button>
+            </div>
+          </div>
+
           {/* Agent Selection */}
           <div>
-            <label className="block text-sm font-medium text-text mb-2">
+            <label className="block text-sm font-medium text-text mb-1.5">
               分配給 Agent
             </label>
             <div className="grid grid-cols-4 gap-2">
@@ -96,13 +132,13 @@ export default function TaskCreateModal({
                   type="button"
                   onClick={() => setAgentId(agent.id)}
                   disabled={loading}
-                  className={`flex flex-col items-center gap-1 rounded-lg border p-3 transition-all ${
+                  className={`flex flex-col items-center gap-1 rounded-lg border p-2.5 transition-all ${
                     agentId === agent.id
                       ? 'border-primary bg-primary/10 ring-2 ring-primary/30'
                       : 'border-border bg-background hover:border-primary/50 hover:bg-surface'
                   } disabled:opacity-50`}
                 >
-                  <span className="text-2xl">{agent.emoji}</span>
+                  <span className="text-xl">{agent.emoji}</span>
                   <span className="text-xs font-medium text-text">{agent.label}</span>
                 </button>
               ))}
@@ -111,7 +147,7 @@ export default function TaskCreateModal({
 
           {/* Priority Selection */}
           <div>
-            <label className="block text-sm font-medium text-text mb-2">
+            <label className="block text-sm font-medium text-text mb-1.5">
               優先級
               {priority === 'auto' && task.trim() && (
                 <span className="ml-2 text-xs text-muted">
@@ -124,7 +160,7 @@ export default function TaskCreateModal({
                 type="button"
                 onClick={() => setPriority('auto')}
                 disabled={loading}
-                className={`flex-1 rounded-lg border px-4 py-2 text-sm font-medium transition-all ${
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
                   priority === 'auto'
                     ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/30'
                     : 'border-border bg-background text-text hover:border-primary/50'
@@ -140,7 +176,7 @@ export default function TaskCreateModal({
                     type="button"
                     onClick={() => setPriority(p)}
                     disabled={loading}
-                    className={`flex-1 rounded-lg border px-4 py-2 text-sm font-medium transition-all ${
+                    className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
                       priority === p
                         ? `${config.border} ${config.bg} ${config.text} ring-2 ring-offset-0`
                         : `border-border bg-background text-text hover:${config.border}`
@@ -161,7 +197,7 @@ export default function TaskCreateModal({
           )}
 
           {/* Action Buttons */}
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-3 pt-1">
             <button
               type="button"
               onClick={onClose}
