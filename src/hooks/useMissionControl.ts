@@ -15,18 +15,47 @@ import type {
 
 // Unified API helper
 async function api(path: string, options?: RequestInit) {
-  const res = await fetch(`${API_BASE}${path}`, options);
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `請求失敗 (${res.status})`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `請求失敗 (${res.status})`);
+    }
+    return res.json();
+  } finally {
+    clearTimeout(timeout);
   }
-  return res.json();
+}
+
+// --- localStorage helpers ---
+const LOCAL_TASKS_KEY = 'openclaw_tasks';
+
+function saveLocalTasks(tasks: TasksData) {
+  try {
+    localStorage.setItem(LOCAL_TASKS_KEY, JSON.stringify(tasks));
+  } catch { /* quota exceeded */ }
+}
+
+function loadLocalTasks(): TasksData {
+  try {
+    const data = localStorage.getItem(LOCAL_TASKS_KEY);
+    if (data) {
+      const parsed = JSON.parse(data);
+      if (parsed.todo && parsed.in_progress && parsed.done) return parsed;
+    }
+  } catch { /* parse error */ }
+  return { todo: [], in_progress: [], done: [] };
 }
 
 export type PanelType = 'agents' | 'tasks' | 'content' | 'create';
 
 export function useMissionControl() {
-  // Agent state (from useAgentStatus)
+  // Agent state
   const [agents, setAgents] = useState<Agent[]>([]);
   const [metrics, setMetrics] = useState<AgentMetrics>({
     totalTasks: 0,
@@ -35,21 +64,22 @@ export function useMissionControl() {
     avgResponseTime: 0,
   });
 
-  // Task state (from useOpenClaw)
+  // Task state - initialize from localStorage
   const [tasks, setTasks] = useState<TasksData>({ todo: [], in_progress: [], done: [] });
+  const [gatewayConnected, setGatewayConnected] = useState<boolean | null>(null);
 
-  // Content state (from useOpenClaw)
+  // Content state
   const [outputs, setOutputs] = useState<Output[]>([]);
   const [geniusItems, setGeniusItems] = useState<Output[]>([]);
   const [selectedOutputs, setSelectedOutputs] = useState<string[]>([]);
   const [selectedGenius, setSelectedGenius] = useState<string[]>([]);
 
-  // Creation state (from useOpenClaw)
+  // Creation state
   const [input, setInput] = useState('');
   const [result, setResult] = useState('');
   const [resultType, setResultType] = useState<ResultType>('');
 
-  // UI state (new for Mission Control)
+  // UI state
   const [activePanel, setActivePanel] = useState<PanelType>('tasks');
 
   // Meta state
@@ -57,6 +87,11 @@ export function useMissionControl() {
   const [processing, setProcessing] = useState('');
   const [error, setError] = useState('');
   const [status, setStatus] = useState<BackendStatus>({ status: 'Idle' });
+
+  // Load localStorage tasks on mount
+  useEffect(() => {
+    setTasks(loadLocalTasks());
+  }, []);
 
   // --- Data Fetching Functions ---
 
@@ -75,8 +110,14 @@ export function useMissionControl() {
 
   const fetchTasks = useCallback(async () => {
     try {
-      setTasks(await api(`/data/tasks.json?t=${Date.now()}`));
-    } catch { /* silent */ }
+      const data = await api(`/data/tasks.json?t=${Date.now()}`);
+      setTasks(data);
+      saveLocalTasks(data);
+      setGatewayConnected(true);
+    } catch {
+      setGatewayConnected(false);
+      // Keep current tasks (from localStorage or previous state)
+    }
   }, []);
 
   const fetchOutputs = useCallback(async () => {
@@ -99,9 +140,8 @@ export function useMissionControl() {
     } catch { /* silent */ }
   }, []);
 
-  // Unified polling - all data sources
+  // Unified polling
   useEffect(() => {
-    // Initial fetch
     fetchAgents();
     fetchTasks();
     fetchOutputs();
@@ -132,55 +172,73 @@ export function useMissionControl() {
     if (!text) return;
     setLoading(true);
     setError('');
+
+    const taskPriority = priority || detectPriority(text);
+    const taskType = agentId || 'auto';
+
     try {
+      // Try Gateway first
       await api('/add_task', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           task: text,
-          task_type: agentId || 'auto',
-          priority: priority || detectPriority(text),
-          frontendStatus: 'todo',  // 新任務預設進 Todo
+          task_type: taskType,
+          priority: taskPriority,
+          frontendStatus: 'todo',
         }),
       });
       setInput('');
+      setGatewayConnected(true);
       await fetchTasks();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : '無法連接伺服器';
-      setError(msg);
-      throw new Error(msg);  // 重新拋出讓 Modal 知道失敗
+    } catch {
+      // Gateway unavailable - save locally
+      const newTask: Task = {
+        id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        task: text,
+        task_type: taskType,
+        priority: taskPriority,
+        status: 'todo',
+        frontendStatus: 'todo',
+        timestamp: new Date().toISOString(),
+      };
+
+      setTasks(prev => {
+        const updated = {
+          ...prev,
+          todo: [...prev.todo, newTask],
+        };
+        saveLocalTasks(updated);
+        return updated;
+      });
+
+      setInput('');
+      setGatewayConnected(false);
+      // Don't throw - task was saved locally
     } finally {
       setLoading(false);
     }
   }, [input, fetchTasks]);
 
   const updateTask = useCallback(async (taskId: string, updates: Partial<Task>) => {
+    // Update local state immediately
+    setTasks(prev => {
+      const updateTaskInList = (taskList: Task[]) =>
+        taskList.map(t => t.id === taskId ? { ...t, ...updates } : t);
+
+      const updated = {
+        todo: updateTaskInList(prev.todo),
+        in_progress: updateTaskInList(prev.in_progress),
+        done: updateTaskInList(prev.done),
+      };
+      saveLocalTasks(updated);
+      return updated;
+    });
+
+    // Try to sync with Gateway
     try {
-      // Update local state immediately for better UX
-      setTasks(prev => {
-        const updateTaskInList = (taskList: Task[]) =>
-          taskList.map(t => t.id === taskId ? { ...t, ...updates } : t);
-
-        return {
-          todo: updateTaskInList(prev.todo),
-          in_progress: updateTaskInList(prev.in_progress),
-          done: updateTaskInList(prev.done),
-        };
-      });
-
-      // In a real implementation, you would call an API endpoint here
-      // await api(`/tasks/${taskId}`, {
-      //   method: 'PATCH',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(updates),
-      // });
-
-      // For now, just refresh to get server state
       await fetchTasks();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '更新任務失敗');
-      await fetchTasks(); // Revert on error
-    }
+    } catch { /* keep local state */ }
   }, [fetchTasks]);
 
   // --- Content Actions ---
@@ -221,24 +279,15 @@ export function useMissionControl() {
     }
   }, [selectedOutputs, fetchOutputs, fetchGenius]);
 
-  // --- Creation Actions ---
-
   const generateSocial = useCallback(async (platform: string) => {
-    if (!result) {
-      setError('請先產生觀點內容');
-      return;
-    }
+    if (!result) { setError('請先產生觀點內容'); return; }
     setProcessing('Quill 正在寫文案...');
     setError('');
     try {
       const data = await api('/generate_social', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: result,
-          platform,
-          tone: '專業但有個人觀點'
-        }),
+        body: JSON.stringify({ content: result, platform, tone: '專業但有個人觀點' }),
       });
       setResult(data.content);
       setResultType('social');
@@ -251,21 +300,14 @@ export function useMissionControl() {
   }, [result, fetchGenius]);
 
   const generateImage = useCallback(async () => {
-    if (!result) {
-      setError('請先產生觀點內容');
-      return;
-    }
+    if (!result) { setError('請先產生觀點內容'); return; }
     setProcessing('Pixel 正在構思畫面...');
     setError('');
     try {
       const data = await api('/generate_image_prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: result,
-          style: '現代簡約',
-          aspect: '1:1'
-        }),
+        body: JSON.stringify({ content: result, style: '現代簡約', aspect: '1:1' }),
       });
       setResult(data.content);
       setResultType('image');
@@ -278,21 +320,14 @@ export function useMissionControl() {
   }, [result, fetchGenius]);
 
   const generatePodcast = useCallback(async (duration: string) => {
-    if (!result) {
-      setError('請先產生觀點內容');
-      return;
-    }
+    if (!result) { setError('請先產生觀點內容'); return; }
     setProcessing('正在寫播客腳本...');
     setError('');
     try {
       const data = await api('/generate_podcast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: result,
-          duration,
-          style: '輕鬆對談'
-        }),
+        body: JSON.stringify({ content: result, duration, style: '輕鬆對談' }),
       });
       setResult(data.content);
       setResultType('podcast');
@@ -305,21 +340,14 @@ export function useMissionControl() {
   }, [result, fetchGenius]);
 
   const generateVideo = useCallback(async (platform: string, duration: string) => {
-    if (!result) {
-      setError('請先產生觀點內容');
-      return;
-    }
+    if (!result) { setError('請先產生觀點內容'); return; }
     setProcessing('正在寫短影音腳本...');
     setError('');
     try {
       const data = await api('/generate_short_video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: result,
-          platform,
-          duration
-        }),
+        body: JSON.stringify({ content: result, platform, duration }),
       });
       setResult(data.content);
       setResultType('video');
@@ -331,69 +359,27 @@ export function useMissionControl() {
     }
   }, [result, fetchGenius]);
 
-  // --- Utility Actions ---
-
   const copyResult = useCallback(() => {
     if (result) navigator.clipboard.writeText(result);
   }, [result]);
 
   const refresh = useCallback(async () => {
     await Promise.all([
-      fetchAgents(),
-      fetchTasks(),
-      fetchOutputs(),
-      fetchGenius(),
-      fetchStatus(),
+      fetchAgents(), fetchTasks(), fetchOutputs(), fetchGenius(), fetchStatus(),
     ]);
   }, [fetchAgents, fetchTasks, fetchOutputs, fetchGenius, fetchStatus]);
 
   return {
-    // Agent data
-    agents,
-    metrics,
-
-    // Task data
+    agents, metrics,
     tasks,
-
-    // Content data
-    outputs,
-    geniusItems,
-    selectedOutputs,
-    selectedGenius,
-
-    // Creation data
-    input,
-    setInput,
-    result,
-    resultType,
-
-    // UI state
-    activePanel,
-    setActivePanel,
-
-    // Meta state
-    loading,
-    processing,
-    error,
-    status,
-
-    // Task actions
-    addTask,
-    updateTask,
-
-    // Content actions
-    toggleOutput,
-    toggleGenius,
-    mergeOutputs,
-
-    // Creation actions
-    generateSocial,
-    generateImage,
-    generatePodcast,
-    generateVideo,
-
-    // Utility actions
-    copyResult,
-    refresh,
+    gatewayConnected,
+    outputs, geniusItems, selectedOutputs, selectedGenius,
+    input, setInput, result, resultType,
+    activePanel, setActivePanel,
+    loading, processing, error, status,
+    addTask, updateTask,
+    toggleOutput, toggleGenius, mergeOutputs,
+    generateSocial, generateImage, generatePodcast, generateVideo,
+    copyResult, refresh,
   };
 }

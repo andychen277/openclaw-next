@@ -246,7 +246,7 @@ export default function KanbanBoard({ tasks, onUpdateTask }: KanbanBoardProps) {
         </div>
 
         {/* Kanban 列 */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-2 lg:grid-rows-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
           {COLUMNS.map(column => {
             const columnTasks = filterTasks(localTasks[column.id] || []);
 
@@ -255,7 +255,7 @@ export default function KanbanBoard({ tasks, onUpdateTask }: KanbanBoardProps) {
                 {/* 列頭（作為拖放目標） */}
                 <div
                   id={column.id}
-                  className={`mb-3 flex items-center justify-between rounded-lg border p-3 ${column.color} transition-all`}
+                  className={`mb-2 flex items-center justify-between rounded-lg border px-3 py-2 ${column.color} transition-all`}
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-lg">{column.icon}</span>
@@ -268,10 +268,10 @@ export default function KanbanBoard({ tasks, onUpdateTask }: KanbanBoardProps) {
 
                 {/* 任務卡片列表 */}
                 <SortableContext items={columnTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-                  <div className="space-y-3 flex-1 min-h-[200px]">
+                  <div className="space-y-2 flex-1 min-h-[60px]">
                     {columnTasks.length === 0 ? (
-                      <div className="flex h-32 items-center justify-center rounded-lg border border-dashed border-border bg-background/30">
-                        <p className="text-sm text-muted/50">No tasks</p>
+                      <div className="flex h-12 items-center justify-center rounded-lg border border-dashed border-border/50 bg-background/20">
+                        <p className="text-xs text-muted/40">No tasks</p>
                       </div>
                     ) : (
                       columnTasks.map(task => (
@@ -290,32 +290,16 @@ export default function KanbanBoard({ tasks, onUpdateTask }: KanbanBoardProps) {
           })}
         </div>
 
-        {/* 統計摘要 - 6 狀態 */}
-        <div className="mt-6 grid grid-cols-3 md:grid-cols-6 gap-4 rounded-xl border border-border bg-surface p-4">
-          <div className="text-center">
-            <p className="text-2xl font-bold text-gray-400">{localTasks.backlog?.length || 0}</p>
-            <p className="text-xs text-muted">Ideas</p>
-          </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-slate-400">{localTasks.todo?.length || 0}</p>
-            <p className="text-xs text-muted">To Do</p>
-          </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-violet-400">{localTasks.pending?.length || 0}</p>
-            <p className="text-xs text-muted">Waiting</p>
-          </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-amber-400">{localTasks.ongoing?.length || 0}</p>
-            <p className="text-xs text-muted">Active</p>
-          </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-cyan-400">{localTasks.review?.length || 0}</p>
-            <p className="text-xs text-muted">Review</p>
-          </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-emerald-400">{localTasks.done?.length || 0}</p>
-            <p className="text-xs text-muted">Done</p>
-          </div>
+        {/* 統計摘要 - compact inline */}
+        <div className="mt-4 flex flex-wrap gap-3 text-xs text-muted">
+          {COLUMNS.map(col => {
+            const count = localTasks[col.id]?.length || 0;
+            return (
+              <span key={col.id}>
+                {col.icon} {col.label}: <span className="font-semibold text-text">{count}</span>
+              </span>
+            );
+          })}
         </div>
       </div>
 

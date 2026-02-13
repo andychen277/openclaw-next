@@ -29,18 +29,19 @@ export default function MissionControlLayout({
       )}
 
       {/* Three-panel layout */}
-      <div className="flex flex-col lg:flex-row h-[calc(100dvh-theme(spacing.20))]">
+      <div className="flex flex-col lg:flex-row lg:h-[calc(100dvh-4rem)]">
         {/* Left Panel - Agents (25%) */}
         <div className={`
           border-r border-border bg-surface overflow-y-auto
           ${activePanel === 'agents' ? 'block' : 'hidden'} lg:block lg:w-1/4
+          pb-14 lg:pb-0
         `}>
           {leftPanel}
         </div>
 
         {/* Center Panel - Kanban (50%) */}
         <div className={`
-          flex-1 overflow-y-auto p-4 lg:p-6 pb-20 lg:pb-6
+          flex-1 overflow-y-auto p-3 lg:p-6 pb-14 lg:pb-6
           ${activePanel === 'tasks' ? 'block' : 'hidden'} lg:block
         `}>
           {centerPanel}
@@ -50,31 +51,23 @@ export default function MissionControlLayout({
         <div className={`
           border-l border-border bg-surface overflow-y-auto
           ${activePanel === 'content' ? 'block' : 'hidden'} lg:block lg:w-1/4
+          pb-14 lg:pb-0
         `}>
           {rightPanel}
         </div>
       </div>
 
-      {/* Mobile bottom navigation */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 border-t border-border bg-surface/95 backdrop-blur p-2 grid grid-cols-3 gap-2 z-10">
-        <button
-          onClick={() => setActivePanel('agents')}
-          className={`py-2 text-xs ${activePanel === 'agents' ? 'btn-primary' : 'btn-secondary'}`}
-        >
-          🤖 Agents
-        </button>
-        <button
-          onClick={() => setActivePanel('tasks')}
-          className={`py-2 text-xs ${activePanel === 'tasks' ? 'btn-primary' : 'btn-secondary'}`}
-        >
-          📋 Tasks
-        </button>
-        <button
-          onClick={() => setActivePanel('content')}
-          className={`py-2 text-xs ${activePanel === 'content' ? 'btn-primary' : 'btn-secondary'}`}
-        >
-          📁 Content
-        </button>
+      {/* Mobile bottom navigation - compact */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 border-t border-border bg-surface/95 backdrop-blur px-2 py-1.5 grid grid-cols-3 gap-1.5 z-10">
+        {(['agents', 'tasks', 'content'] as const).map(panel => (
+          <button
+            key={panel}
+            onClick={() => setActivePanel(panel)}
+            className={`py-1.5 text-xs rounded-md ${activePanel === panel ? 'btn-primary' : 'btn-secondary'}`}
+          >
+            {panel === 'agents' ? '🤖 Agents' : panel === 'tasks' ? '📋 Tasks' : '📁 Content'}
+          </button>
+        ))}
       </div>
     </div>
   );
