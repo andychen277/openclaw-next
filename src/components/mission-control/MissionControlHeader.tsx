@@ -5,21 +5,17 @@ import type { AgentMetrics, BackendStatus } from '@/lib/types';
 interface MissionControlHeaderProps {
   metrics: AgentMetrics;
   status: BackendStatus;
-  gatewayConnected?: boolean | null;
 }
 
-export default function MissionControlHeader({ metrics, status, gatewayConnected }: MissionControlHeaderProps) {
+export default function MissionControlHeader({ metrics, status }: MissionControlHeaderProps) {
   const getStatusConfig = () => {
-    if (gatewayConnected === false) {
-      return { color: 'bg-orange-500', label: '離線模式', pulse: false };
-    }
     switch (status.status) {
       case 'Working':
         return { color: 'bg-success', label: '運作中', pulse: true };
       case 'Thinking':
         return { color: 'bg-warning', label: '思考中', pulse: true };
       default:
-        return { color: 'bg-slate-500', label: '待命', pulse: false };
+        return { color: 'bg-emerald-500', label: '待命', pulse: false };
     }
   };
 
@@ -32,11 +28,9 @@ export default function MissionControlHeader({ metrics, status, gatewayConnected
         <h1 className="text-base md:text-xl font-bold text-text">
           OpenClaw
         </h1>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <div className={`w-2 h-2 rounded-full ${statusConfig.color} ${statusConfig.pulse ? 'animate-pulse' : ''}`} />
-            <span className="text-xs text-muted">{statusConfig.label}</span>
-          </div>
+        <div className="flex items-center gap-1.5">
+          <div className={`w-2 h-2 rounded-full ${statusConfig.color} ${statusConfig.pulse ? 'animate-pulse' : ''}`} />
+          <span className="text-xs text-muted">{statusConfig.label}</span>
         </div>
       </div>
 

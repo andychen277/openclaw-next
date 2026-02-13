@@ -18,7 +18,6 @@ export default function MissionControlPage() {
           <MissionControlHeader
             metrics={mc.metrics}
             status={mc.status}
-            gatewayConnected={mc.gatewayConnected}
           />
         }
         leftPanel={
