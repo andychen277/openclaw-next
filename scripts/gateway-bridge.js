@@ -196,14 +196,46 @@ async function dispatchTask(task) {
   return null;
 }
 
-// --- Poll Redis for new tasks ---
+// --- Sync state to Vercel ---
+async function syncToVercel(tasks) {
+  try {
+    // 1. Fetch current outputs from local Gateway
+    const outRes = await fetch(`${GATEWAY_WS.replace('ws://', 'http://')}/list_outputs`).catch(() => null);
+    const outData = outRes ? await outRes.json() : { outputs: [] };
+
+    // 2. Push tasks and outputs to Vercel
+    await fetch(`${VERCEL_URL}/api/gateway/sync`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.GATEWAY_SYNC_TOKEN || ''}`
+      },
+      body: JSON.stringify({
+        tasks: {
+          todo: tasks.filter(t => t.status === 'todo'),
+          in_progress: tasks.filter(t => t.status === 'in_progress'),
+          done: tasks.filter(t => t.status === 'done'),
+        },
+        outputs: outData.outputs || [],
+      }),
+    });
+    // log('📤 State synced to Vercel');
+  } catch (e) {
+    log(`⚠️ Sync error: ${e.message}`);
+  }
+}
+
 async function pollTasks() {
   try {
     const res = await fetch(`${VERCEL_URL}/api/tasks`);
     const data = await res.json();
+    const allTasks = data.tasks || [];
+
+    // Sync full state to Vercel so Dashboard sees updates
+    await syncToVercel(allTasks);
 
     // Only process tasks that are in 'todo' status
-    const pendingTasks = (data.tasks || []).filter(t => t.status === 'todo');
+    const pendingTasks = allTasks.filter(t => t.status === 'todo');
     if (!pendingTasks.length) return;
 
     log(`📥 Found ${pendingTasks.length} pending task(s) in Redis`);
