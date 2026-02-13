@@ -24,7 +24,7 @@ export default function FloatingAddButton({ onSubmit }: FloatingAddButtonProps) 
       {/* FAB Button */}
       <button
         onClick={() => setShowModal(true)}
-        className="lg:hidden fixed bottom-[4.5rem] right-4 z-20 w-14 h-14 rounded-full bg-primary text-background shadow-lg hover:shadow-xl transition-all flex items-center justify-center text-2xl"
+        className="lg:hidden fixed bottom-[6rem] right-4 z-20 w-16 h-16 rounded-full bg-primary text-background shadow-lg hover:shadow-xl transition-all flex items-center justify-center text-2xl"
         aria-label="新增任務"
       >
         ➕

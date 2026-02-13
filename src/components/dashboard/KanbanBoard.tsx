@@ -209,44 +209,38 @@ export default function KanbanBoard({ tasks, onUpdateTask }: KanbanBoardProps) {
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="space-y-4">
         {/* 搜尋和篩選器 */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          {/* 搜尋框 */}
-          <div className="relative flex-1 max-w-md">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
             <input
               type="text"
-              placeholder="Search tasks..."
+              placeholder="Search..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-4 py-2 pl-10 text-sm text-text placeholder:text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 pl-9 text-sm text-text placeholder:text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
-
-          {/* 優先級篩選 */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted">Priority:</span>
-            <div className="flex gap-2">
-              {['all', 'high', 'medium', 'low'].map(f => (
-                <button
-                  key={f}
-                  onClick={() => setFilter(f as any)}
-                  className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                    filter === f
-                      ? 'bg-primary text-background'
-                      : 'bg-surface text-muted hover:bg-surface-darker hover:text-text'
-                  }`}
-                >
-                  {f === 'all' ? 'All' : f.toUpperCase()}
-                </button>
-              ))}
-            </div>
+          <div className="flex gap-1 shrink-0">
+            {['all', 'high', 'medium', 'low'].map(f => (
+              <button
+                key={f}
+                onClick={() => setFilter(f as any)}
+                className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                  filter === f
+                    ? 'bg-primary text-background'
+                    : 'bg-surface text-muted hover:bg-surface-darker'
+                }`}
+              >
+                {f === 'all' ? 'All' : f[0].toUpperCase()}
+              </button>
+            ))}
           </div>
         </div>
 
         {/* Kanban 列 */}
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-3">
           {COLUMNS.map(column => {
             const columnTasks = filterTasks(localTasks[column.id] || []);
 
@@ -255,23 +249,23 @@ export default function KanbanBoard({ tasks, onUpdateTask }: KanbanBoardProps) {
                 {/* 列頭（作為拖放目標） */}
                 <div
                   id={column.id}
-                  className={`mb-2 flex items-center justify-between rounded-lg border px-3 py-2 ${column.color} transition-all`}
+                  className={`mb-1.5 flex items-center justify-between rounded-lg border px-2 py-1.5 ${column.color} transition-all`}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{column.icon}</span>
-                    <h3 className="font-semibold text-text">{column.label}</h3>
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm">{column.icon}</span>
+                    <h3 className="text-xs font-semibold text-text">{column.label}</h3>
                   </div>
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-background/50 text-xs font-bold text-text">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-background/50 text-[10px] font-bold text-text">
                     {columnTasks.length}
                   </span>
                 </div>
 
                 {/* 任務卡片列表 */}
                 <SortableContext items={columnTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-                  <div className="space-y-2 flex-1 min-h-[60px]">
+                  <div className="space-y-1.5 flex-1 min-h-[40px]">
                     {columnTasks.length === 0 ? (
-                      <div className="flex h-12 items-center justify-center rounded-lg border border-dashed border-border/50 bg-background/20">
-                        <p className="text-xs text-muted/40">No tasks</p>
+                      <div className="flex h-8 items-center justify-center rounded-md border border-dashed border-border/50 bg-background/20">
+                        <p className="text-[10px] text-muted/40">Empty</p>
                       </div>
                     ) : (
                       columnTasks.map(task => (
@@ -290,13 +284,14 @@ export default function KanbanBoard({ tasks, onUpdateTask }: KanbanBoardProps) {
           })}
         </div>
 
-        {/* 統計摘要 - compact inline */}
-        <div className="mt-4 flex flex-wrap gap-3 text-xs text-muted">
+        {/* 統計摘要 */}
+        <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-muted">
           {COLUMNS.map(col => {
             const count = localTasks[col.id]?.length || 0;
+            if (count === 0) return null;
             return (
               <span key={col.id}>
-                {col.icon} {col.label}: <span className="font-semibold text-text">{count}</span>
+                {col.icon}{count}
               </span>
             );
           })}

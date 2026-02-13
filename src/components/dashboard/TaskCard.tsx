@@ -33,37 +33,26 @@ export default function TaskCard({ task, assignedAgent, onAssignAgent }: TaskCar
   const config = priorityConfig[task.priority];
 
   return (
-    <div className="group cursor-pointer overflow-hidden rounded-lg border border-border bg-surface p-3 transition-all hover:border-primary/40 hover:shadow-md">
-      {/* 任務標題 */}
-      <h4 className="mb-2 font-medium text-text text-sm line-clamp-2 group-hover:text-primary transition-colors">
-        {task.task}
-      </h4>
-
-      {/* 優先級標籤 */}
-      <div className="flex items-center justify-between mb-3">
-        <span className={`inline-flex items-center rounded border px-2 py-0.5 text-xs font-semibold ${config.bg} ${config.text} ${config.border}`}>
-          {config.label}
-        </span>
-
-        {task.timestamp && (
-          <span className="text-xs text-muted/70">
-            {new Date(task.timestamp).toLocaleDateString('zh-TW', { month: 'short', day: 'numeric' })}
-          </span>
-        )}
+    <div className="group cursor-pointer overflow-hidden rounded-lg border border-border bg-surface p-2 transition-all hover:border-primary/40 hover:shadow-md">
+      {/* 任務標題 + 優先級 */}
+      <div className="flex items-start gap-1.5">
+        <span className={`mt-0.5 shrink-0 h-2 w-2 rounded-full ${config.bg.replace('/20', '')}`} />
+        <h4 className="font-medium text-text text-xs line-clamp-2 group-hover:text-primary transition-colors">
+          {task.task}
+        </h4>
       </div>
 
-      {/* 分配的 Agent */}
-      {assignedAgent && (
-        <div className="flex items-center gap-2 rounded-md bg-background/50 px-2 py-1.5">
-          <span className="text-xs text-muted/70">Assigned to:</span>
-          <span className="text-xs font-medium text-primary">{assignedAgent}</span>
-        </div>
-      )}
-
-      {/* 任務類型標籤 */}
-      {task.task_type && task.task_type !== 'auto' && (
-        <div className="mt-2 inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary/80">
-          {task.task_type}
+      {/* Agent + 日期 */}
+      {(assignedAgent || task.timestamp) && (
+        <div className="flex items-center justify-between mt-1 ml-3.5">
+          {assignedAgent && (
+            <span className="text-[10px] font-medium text-primary">{assignedAgent}</span>
+          )}
+          {task.timestamp && (
+            <span className="text-[10px] text-muted/60">
+              {new Date(task.timestamp).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' })}
+            </span>
+          )}
         </div>
       )}
     </div>
