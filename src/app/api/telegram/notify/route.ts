@@ -10,7 +10,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing task or status' }, { status: 400 });
     }
 
-    const message = formatTaskNotification(task, status, agent);
+    let message;
+    if (agent === 'direct-agent') {
+      message = task; // Special case: send raw text for direct agent
+    } else {
+      message = formatTaskNotification(task, status, agent);
+    }
+
     await sendTelegramMessage(message);
 
     return NextResponse.json({ ok: true });

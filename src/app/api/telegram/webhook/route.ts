@@ -142,7 +142,7 @@ export async function POST(req: Request) {
       };
 
       await saveTask(task);
-      await sendTelegramMessage(`Task created: ${text}`, chatId);
+      // Removed: await sendTelegramMessage(`Task created: ${text}`, chatId);
     }
 
     return NextResponse.json({ ok: true });

@@ -21,12 +21,25 @@ const GATEWAY_TOKEN = '12ea8dc8f7d66267ccb9c66c572c8ce9c33b92e71763b0116dce2e87d
 const POLL_INTERVAL = 10000; // 10s
 const WORKSPACE_DIR = path.join(os.homedir(), '.openclaw', 'workspace');
 const PROJECTS_JSON = path.join(os.homedir(), '.openclaw', 'projects.json');
+const MOCK_MODE = process.argv.includes('--mock');
+
+// Load .env.local for Direct Agent Mode
+const envLocal = path.join(__dirname, '../.env.local');
+if (fs.existsSync(envLocal)) {
+  const envConfig = require('dotenv').parse(fs.readFileSync(envLocal));
+  for (const k in envConfig) {
+    if (!process.env[k]) process.env[k] = envConfig[k];
+  }
+}
+
+const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
+const OPENCLAW_MODEL = process.env.OPENCLAW_MODEL || 'google/gemini-2.0-flash-001';
 
 // --- Helpers ---
 const hex = () => crypto.randomBytes(8).toString('hex');
 const log = (msg) => console.log(`[${new Date().toLocaleTimeString()}] ${msg}`);
 
-// --- Load projects registry ---
+// Load projects registry
 let projectsRegistry = null;
 function loadProjectsRegistry() {
   if (projectsRegistry) return projectsRegistry;
@@ -41,7 +54,7 @@ function loadProjectsRegistry() {
   return projectsRegistry;
 }
 
-// --- Enrich task message with project info ---
+// Enrich task message with project info
 function enrichTaskMessage(task) {
   const registry = loadProjectsRegistry();
   if (!registry) return task.task;
@@ -77,40 +90,12 @@ function enrichTaskMessage(task) {
   return enriched;
 }
 
-// --- Smart Agent Routing ---
-function getTargetAgent(task) {
-  const msg = task.task.toLowerCase();
-
-  // Explicit mentions with @
-  if (msg.includes('@dev') || msg.includes('@forge')) return 'dev';
-  if (msg.includes('@forgecc')) return 'forgecc';
-  if (msg.includes('@writer') || msg.includes('@quill')) return 'writer';
-  if (msg.includes('@imagegen') || msg.includes('@pixel')) return 'imagegen';
-  if (msg.includes('@forum') || msg.includes('@echo')) return 'forum';
-  if (msg.includes('@brainstorm') || msg.includes('@spark')) return 'brainstorm';
-  if (msg.includes('@main') || msg.includes('@ocean')) return 'main';
-
-  // Implicit keyword matching
-  // Dev (Forge) - 277 業務開發
-  if (msg.match(/修復|bug|錯誤|壞了|fix|repair|debug|linebot|line|277|hamm|lbt/)) return 'dev';
-
-  // ForgeCC - OpenClaw 平台開發
-  if (msg.match(/openclaw|dashboard|bridge|vercel|前端|next\.?js/)) return 'forgecc';
-
-  // Writer (Quill) - 文案
-  if (msg.match(/寫文|文案|貼文|行銷|廣告|slogan|標語|寫.*文章/)) return 'writer';
-
-  // ImageGen (Pixel) - 圖像生成
-  if (msg.match(/畫|圖|設計|logo|海報|生成.*圖|image|design|draw/)) return 'imagegen';
-
-  // Forum (Echo) - 論壇發帖
-  if (msg.match(/發帖|論壇|moltbook|貼文|回覆|forum|post/)) return 'forum';
-
-  // Brainstorm (Spark) - 腦力激盪
-  if (msg.match(/腦力|發想|點子|創意|想法|策略|brainstorm|idea/)) return 'brainstorm';
-
-  // Default to main (Ocean)
-  return 'main';
+if (MOCK_MODE) {
+  log('🎭 MOCK MODE ENABLED: Simulating Gateway connection');
+} else if (OPENROUTER_KEY) {
+  log(`🚀 DIRECT AGENT MODE ENABLED: Using ${OPENCLAW_MODEL}`);
+} else {
+  log('⚠️ No OPENROUTER_API_KEY found. Direct Agent Mode disabled.');
 }
 
 // --- WebSocket Client ---
@@ -139,6 +124,12 @@ function sendReq(method, params = {}) {
 
 function connectGateway() {
   return new Promise((resolve) => {
+    if (MOCK_MODE) {
+      connected = true;
+      log('✅ (Mock) Gateway connected');
+      resolve(true);
+      return;
+    }
     log('Connecting to Gateway WebSocket...');
     ws = new WebSocket(GATEWAY_WS, {
       headers: { 'Origin': 'http://localhost:18789' }
@@ -260,35 +251,151 @@ function connectGateway() {
   });
 }
 
-// --- Task Dispatcher ---
-async function dispatchTask(task) {
-  if (!connected) {
-    log('⚠️ Gateway not connected, skipping task dispatch');
-    return null;
+// --- Memory Store ---
+const memory = new Map(); // chatId -> array of messages
+
+// --- Direct Agent Logic ---
+async function processDirectTask(task) {
+  if (!OPENROUTER_KEY) {
+    log('❌ Direct Agent failed: Missing API Key');
+    return false;
   }
 
-  // Smart routing: determine target agent
-  const sessionKey = getTargetAgent(task);
+  // Derive chatId from task ID if possible (tg_TIMESTAMP_ID -> unknown)
+  // Or fallback to default TELEGRAM_CHAT_ID
+  const chatId = process.env.TELEGRAM_CHAT_ID || "unknown";
 
-  // Enrich with project info if detected
-  const enrichedTask = enrichTaskMessage(task);
-  const message = `[Task ${task.id}] ${enrichedTask}`;
+  // Get history
+  const history = memory.get(chatId) || [];
+
+  log(`🤖 Direct Agent processing (Memory: ${history.length}): ${task.task}`);
 
   try {
-    const res = await sendReq('chat.send', {
-      sessionKey,
-      message,
-      deliver: false,
-      idempotencyKey: hex(),
+    const messages = [
+      { "role": "system", "content": "You are OpenClaw, an advanced AI agent. Respond professionally and concisely. You have access to previous context in this chat." },
+      ...history,
+      { "role": "user", "content": task.task }
+    ];
+
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${OPENROUTER_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        "model": OPENCLAW_MODEL,
+        "messages": messages,
+      })
     });
 
-    if (res.status === 'started') {
-      log(`🚀 Dispatched: "${task.task.substring(0, 50)}..." → ${sessionKey} (run: ${res.runId})`);
-      return res.runId;
+    if (!response.ok) {
+      throw new Error(`OpenRouter API Error: ${response.statusText}`);
     }
+
+    const data = await response.json();
+    const reply = data.choices?.[0]?.message?.content || "(No response content)";
+
+    log(`💬 Agent Replying: ${reply.substring(0, 50)}...`);
+
+    // Update Memory
+    history.push({ "role": "user", "content": task.task });
+    history.push({ "role": "assistant", "content": reply });
+    memory.set(chatId, history.slice(-10)); // Keep last 10 messages
+
+    // 1. Update Task to Done
+    await fetch(`${VERCEL_URL}/api/tasks`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: task.id, status: 'done', frontendStatus: 'done' }),
+    });
+
+    // 2. Notify Telegram (Streamlined)
+    await fetch(`${VERCEL_URL}/api/telegram/notify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        task: reply, // Raw reply text
+        status: 'done',
+        agent: 'direct-agent', // This triggers the raw mode in notify route
+      }),
+    });
+
+    return true;
+
   } catch (e) {
-    log(`❌ Dispatch failed to ${sessionKey}: ${e.message}`);
+    log(`❌ Direct Agent Error: ${e.message}`);
+    return false;
   }
+}
+
+// --- Task Dispatcher ---
+async function dispatchTask(task) {
+  // Priority 1: Mock Mode
+  if (MOCK_MODE) {
+    const runId = hex();
+    log(`🚀 (Mock) Dispatched: "${task.task}" (run: ${runId})`);
+
+    // Simulate processing delay then completion
+    setTimeout(async () => {
+      log(`💬 (Mock) Agent acting on: ${task.task}`);
+
+      // Update status to done in Redis
+      await fetch(`${VERCEL_URL}/api/tasks`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: task.id, status: 'done', frontendStatus: 'done' }),
+      }).catch(() => { });
+
+      // Notify Telegram
+      await fetch(`${VERCEL_URL}/api/telegram/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task: `[Mock Agent] Completed: ${task.task}`,
+          status: 'done',
+          agent: 'mock-agent',
+        }),
+      }).catch(() => { });
+
+      runTaskMap.delete(runId);
+    }, 5000); // 5s fake processing
+
+    return runId;
+  }
+
+  // Priority 2: Local Gateway (if connected)
+  if (connected) {
+    const sessionKey = 'main'; // Dispatch to main agent (Ocean)
+    const enrichedTask = enrichTaskMessage(task);
+    const message = `[Task ${task.id}] ${enrichedTask}`;
+
+    try {
+      const res = await sendReq('chat.send', {
+        sessionKey,
+        message,
+        deliver: false,
+        idempotencyKey: hex(),
+      });
+
+      if (res.status === 'started') {
+        log(`🚀 Dispatched: "${task.task}" → ${sessionKey} (run: ${res.runId})`);
+        return res.runId;
+      }
+    } catch (e) {
+      log(`❌ Dispatch failed: ${e.message}`);
+    }
+  }
+
+  // Priority 3: Direct Agent Fallback
+  if (OPENROUTER_KEY) {
+    log(`⚠️ Gateway unavailable, falling back to Direct Agent...`);
+    await processDirectTask(task);
+    return null; // Direct agent completed task inline
+  } else {
+    log('❌ Gateway unavailable and no OPENROUTER_API_KEY. Task pending.');
+  }
+
   return null;
 }
 
@@ -386,7 +493,11 @@ async function main() {
   console.log(`Poll:    ${POLL_INTERVAL / 1000}s`);
   console.log('');
 
-  await connectGateway();
+  if (OPENROUTER_KEY) {
+    console.log('🔌 Direct Agent Mode: Skipping Local Gateway connection');
+  } else {
+    await connectGateway();
+  }
 
   // Start polling
   setInterval(pollTasks, POLL_INTERVAL);
